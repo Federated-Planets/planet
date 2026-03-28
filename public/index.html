@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- [CHANGE THIS] Your planet's name and its manifest link -->
+    <title>Landing Site - Towel 42 Space Outpost</title>
+    <link rel="space-manifest" href="/manifest.json" />
+    <link rel="stylesheet" href="/planet.css" />
+    <script src="/map.js" defer></script>
+  </head>
+  <body>
+    <div class="planet-container">
+      <div class="atmosphere"></div>
+      <div class="ring-back"></div>
+      <div class="planet"></div>
+      <div class="ring"></div>
+    </div>
+    <!-- [CHANGE THIS] The name of your planet -->
+    <h1>Towel 42 Space Outpost</h1>
+    <p>Landing Site of a remote federation outpost.</p>
+    <p>
+      Coordinates:
+      <code class="coord-display">394.001 - 162.787</code>
+    </p>
+
+    <div class="status-badge">Space Port Active</div>
+
+    <section class="space-port">
+      <div class="traffic-log">
+        <h3>Live Space Port Traffic</h3>
+        <table class="traffic-table">
+          <thead>
+            <tr>
+              <th>Ship</th>
+              <th>Status</th>
+              <th>Location</th>
+              <th>Time/ETA</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="preparation">
+              <td class="ship-id">X-99-R "Star-Skipper"</td>
+              <td><span class="status-label">PREPARING</span></td>
+              <td class="location">to: Solaris Gate</td>
+              <td class="eta">Dep: 12:00 FY</td>
+            </tr>
+            <tr class="outgoing">
+              <td class="ship-id">S-42-X</td>
+              <td><span class="status-label">DEPARTING</span></td>
+              <td class="location">to: Aether Reach</td>
+              <td class="eta">Arr: 14:30 FY</td>
+            </tr>
+            <tr class="incoming">
+              <td class="ship-id">V-00-Z "The Great Unknown"</td>
+              <td><span class="status-label">INCOMING</span></td>
+              <td class="location">from: Nova Prime</td>
+              <td class="eta">ETA: 10m</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mission-archive">
+        <h3>Recent Mission Archive</h3>
+        <table class="archive-table">
+          <thead>
+            <tr>
+              <th>Ship</th>
+              <th>Event</th>
+              <th>Location</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="arrived">
+              <td class="ship-id">A-12-B "Nomad"</td>
+              <td><span class="event-label">ARRIVED</span></td>
+              <td class="location">from: Iron Star Forge</td>
+              <td class="timestamp">09:15 FY</td>
+            </tr>
+            <tr class="departed">
+              <td class="ship-id">D-45-C "Swift"</td>
+              <td><span class="event-label">DEPARTED</span></td>
+              <td class="location">to: Neon Nebula</td>
+              <td class="timestamp">08:30 FY</td>
+            </tr>
+            <tr class="arrived">
+              <td class="ship-id">K-88-M "Crystal Voyager"</td>
+              <td><span class="event-label">ARRIVED</span></td>
+              <td class="location">from: Crystal Spire</td>
+              <td class="timestamp">07:45 FY</td>
+            </tr>
+            <tr class="departed">
+              <td class="ship-id">Z-11-Q "Nova One"</td>
+              <td><span class="event-label">DEPARTED</span></td>
+              <td class="location">to: Nova Prime</td>
+              <td class="timestamp">07:00 FY</td>
+            </tr>
+            <tr class="arrived">
+              <td class="ship-id">L-33-W "Solar Wind"</td>
+              <td><span class="event-label">ARRIVED</span></td>
+              <td class="location">from: Solaris Gate</td>
+              <td class="timestamp">06:15 FY</td>
+            </tr>
+            <tr class="departed">
+              <td class="ship-id">P-55-T "Void Runner"</td>
+              <td><span class="event-label">DEPARTED</span></td>
+              <td class="location">to: Void Runner Base</td>
+              <td class="timestamp">05:30 FY</td>
+            </tr>
+            <tr class="arrived">
+              <td class="ship-id">B-99-F "Bazaar Trader"</td>
+              <td><span class="event-label">ARRIVED</span></td>
+              <td class="location">from: Starlight Bazaar</td>
+              <td class="timestamp">04:45 FY</td>
+            </tr>
+            <tr class="departed">
+              <td class="ship-id">M-66-Y "Obsidian Crow"</td>
+              <td><span class="event-label">DEPARTED</span></td>
+              <td class="location">to: Obsidian Moon</td>
+              <td class="timestamp">04:00 FY</td>
+            </tr>
+            <tr class="arrived">
+              <td class="ship-id">H-77-G "Elysium Wing"</td>
+              <td><span class="event-label">ARRIVED</span></td>
+              <td class="location">from: Elysium Station</td>
+              <td class="timestamp">03:15 FY</td>
+            </tr>
+            <tr class="departed">
+              <td class="ship-id">T-22-J "Grip-Cracker"</td>
+              <td><span class="event-label">DEPARTED</span></td>
+              <td class="location">to: Titan's Grip</td>
+              <td class="timestamp">02:30 FY</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="warp-ring">
+      <h2>Active Warp Ring Connections</h2>
+
+      <div class="warp-ring-content">
+        <div class="star-map-wrapper">
+          <!-- Universe Star Map (SVG) -->
+          <div class="star-map-container">
+            <svg viewBox="0 0 1000 1000" id="universe-map">
+              <!-- Grid Lines -->
+              <line
+                class="map-grid-line"
+                x1="0"
+                y1="500"
+                x2="1000"
+                y2="500"
+              ></line>
+              <line
+                class="map-grid-line"
+                x1="500"
+                y1="0"
+                x2="500"
+                y2="1000"
+              ></line>
+
+              <!-- Dynamic Content Containers (Populated by build script) -->
+              <g id="map-course-lines"></g>
+              <g id="map-planets"></g>
+
+              <!-- You Are Here (Crosshair) -->
+              <g class="crosshair" transform="translate(394.001, 162.787)">
+                <line
+                  class="crosshair-line h"
+                  x1="-30"
+                  y1="0"
+                  x2="30"
+                  y2="0"
+                ></line>
+                <line
+                  class="crosshair-line v"
+                  x1="0"
+                  y1="-30"
+                  x2="0"
+                  y2="30"
+                ></line>
+                <circle class="crosshair-circle" cx="0" cy="0" r="10"></circle>
+                <circle class="crosshair-pulse" cx="0" cy="0" r="10"></circle>
+              </g>
+            </svg>
+            <div class="map-label">1000x1000 SPARSEC GRID</div>
+          </div>
+
+          <!-- Map Legend -->
+          <div class="map-legend">
+            <div class="legend-item">
+              <span class="legend-marker station"></span>
+              <span>You Are Here</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-marker neighbor"></span>
+              <span>Neighbor Planet</span>
+            </div>
+          </div>
+        </div>
+
+        <ol class="warp-links">
+          <!-- Add planets here. Build script will generate map markers and coordinates. -->
+          <li><a href="https://aether.reach.io">Aether Reach</a></li>
+          <li><a href="https://ironstar.forge">Iron Star Forge</a></li>
+          <li><a href="https://neon.nebula.web">Neon Nebula</a></li>
+          <li><a href="https://crystal.spire.planet">Crystal Spire</a></li>
+          <li>
+            <a href="https://rustbelt.outpost.space">Rust Belt Outpost</a>
+          </li>
+          <li><a href="https://nova.prime.core">Nova Prime</a></li>
+          <li><a href="https://solaris.gate.link">Solaris Gate</a></li>
+          <li><a href="https://void.runner.base">Void Runner Base</a></li>
+          <li><a href="https://starlight.bazaar.trade">Starlight Bazaar</a></li>
+          <li><a href="https://obsidian.moon.base">Obsidian Moon</a></li>
+          <li><a href="https://elysium.station.xyz">Elysium Station</a></li>
+          <li><a href="https://titans.grip.mining">Titan's Grip</a></li>
+          <li><a href="https://frozen.peak.outpost">Frozen Peak</a></li>
+          <li><a href="https://galeforce.five.storm">Gale Force V</a></li>
+          <li><a href="https://the.monolith.mystery">The Monolith</a></li>
+          <li><a href="https://www.nasa.gov/">Explorers Outpost</a></li>
+        </ol>
+      </div>
+    </section>
+
+    <footer>
+      Towel 42 Space Outpost is one of the
+      <a href="https://federatedplanets.com">Federated Planets</a> terraformed
+      with
+      <a href="https://github.com/sergeychernyshev/federated-planets"
+        >Source Codia</a
+      >.
+    </footer>
+  </body>
+</html>
