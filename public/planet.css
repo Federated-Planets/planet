@@ -579,6 +579,125 @@ p {
   font-family: "Courier New", Courier, monospace;
 }
 
+/* Flight Deck */
+.flight-deck {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  width: 300px;
+  background: var(--warp-bg);
+  border: 1px solid var(--warp-accent);
+  border-radius: 8px;
+  box-shadow: 0 0 30px rgba(74, 144, 226, 0.3);
+  z-index: 1000;
+  backdrop-filter: blur(10px);
+  padding: 1.5rem;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.flight-deck.hidden {
+  transform: translateY(20px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.deck-content h3 {
+  margin-top: 0;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #fff;
+  border-bottom: 1px solid var(--warp-border);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.target-info, .target-coords, .metric {
+  margin-bottom: 0.8rem;
+  font-size: 0.85rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.flight-deck .label {
+  color: var(--warp-text-dim);
+  font-weight: bold;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.flight-deck .value {
+  color: var(--warp-accent);
+  font-weight: bold;
+}
+
+.jump-metrics {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.8rem;
+  border-radius: 4px;
+  margin: 1rem 0;
+}
+
+.jump-button {
+  width: 100%;
+  background: #2ecc71;
+  border: none;
+  color: #fff;
+  padding: 0.8rem;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  letter-spacing: 2px;
+  margin-bottom: 0.5rem;
+  transition: background 0.2s;
+}
+
+.jump-button:hover {
+  background: #27ae60;
+}
+
+.jump-button:disabled {
+  background: #555;
+  cursor: not-allowed;
+}
+
+.cancel-button {
+  width: 100%;
+  background: transparent;
+  border: 1px solid #e74c3c;
+  color: #e74c3c;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.cancel-button:hover {
+  background: rgba(231, 76, 60, 0.1);
+}
+
+.land-btn {
+  background: #3498db;
+  border: none;
+  color: #fff;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.land-btn:hover {
+  background: #2980b9;
+}
+
+.land-btn:disabled {
+  background: #555;
+  cursor: not-allowed;
+}
+
 .archive-table td {
   font-size: 0.8rem;
 }

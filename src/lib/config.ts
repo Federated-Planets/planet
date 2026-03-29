@@ -1,0 +1,18 @@
+export const WARP_LINKS = [
+  { name: 'Aether Reach', url: 'https://aether.reach.io' },
+  { name: 'Iron Star Forge', url: 'https://ironstar.forge' },
+  { name: 'Neon Nebula', url: 'https://neon.nebula.web' },
+  { name: 'Crystal Spire', url: 'https://crystal.spire.planet' },
+  { name: 'Rust Belt Outpost', url: 'https://rustbelt.outpost.space' },
+  { name: 'Nova Prime', url: 'https://nova.prime.core' },
+  { name: 'Solaris Gate', url: 'https://solaris.gate.link' },
+  { name: 'Void Runner Base', url: 'https://void.runner.base' },
+  { name: 'Starlight Bazaar', url: 'https://starlight.bazaar.trade' },
+  { name: 'Obsidian Moon', url: 'https://obsidian.moon.base' },
+  { name: 'Elysium Station', url: 'https://elysium.station.xyz' },
+  { name: 'Titan\'s Grip', url: 'https://titans.grip.mining' },
+  { name: 'Frozen Peak', url: 'https://frozen.peak.outpost' },
+  { name: 'Gale Force V', url: 'https://galeforce.five.storm' },
+  { name: 'The Monolith', url: 'https://the.monolith.mystery' },
+  { name: 'Explorers Outpost', url: 'https://www.nasa.gov/' },
+];
