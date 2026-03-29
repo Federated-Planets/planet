@@ -2,7 +2,7 @@
 
 This repository serves as an **advanced reference implementation** for a planetary landing site in the [Federated Planets](https://github.com/Federated-Planets/federated-planets) universe. 
 
-In addition to the standard 3D Star Map, this implementation includes a functional **Space Port UI** template for tracking live traffic and mission archives.
+In addition to the standard 3D Star Map, this implementation includes a functional **Space Port UI** template for tracking live traffic and mission archives, following the [Space Travel Protocol](https://github.com/Federated-Planets/federated-planets/blob/main/TRAVEL.md).
 
 For detailed information on how the Federated Planets world works, please refer to the [official specification](https://github.com/Federated-Planets/federated-planets).
 
