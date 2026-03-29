@@ -1,17 +1,22 @@
 {
-  "name": "federated-planets",
+  "name": "@federated-planets/planet",
   "version": "1.0.0",
   "description": "A decentralized space exploration game where every planet is a sovereign website.",
   "scripts": {
-    "build": "node scripts/update-map.js",
-    "start": "serve dist"
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
   },
   "dependencies": {
-    "cheerio": "^1.2.0"
+    "@astrojs/cloudflare": "^13.1.4",
+    "astro": "^6.1.1",
+    "md5": "^2.3.0"
   },
+  "author": "Sergey Chernyshev",
+  "license": "Apache-2.0",
   "devDependencies": {
-    "serve": "^14.2.6"
-  },
-  "author": "",
-  "license": "ISC"
+    "@astrojs/check": "^0.9.8",
+    "@types/md5": "^2.3.6",
+    "typescript": "^5.9.3"
+  }
 }
