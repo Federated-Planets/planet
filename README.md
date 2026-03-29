@@ -1,6 +1,6 @@
-# Planet Advanced Reference Implementation (Astro)
+# Planet Advanced Reference Implementation
 
-This repository serves as an **advanced reference implementation** for a planetary landing site in the [Federated Planets](https://github.com/Federated-Planets/federated-planets) universe, built with [Astro](https://astro.build) and optimized for [Cloudflare Pages](https://pages.cloudflare.com/).
+This repository serves as an **advanced reference implementation** for a planetary landing site in the [Federated Planets](https://github.com/Federated-Planets/federated-planets) universe, built with [Astro](https://astro.build) and optimized for running on [Cloudflare](https://workers.cloudflare.com/).
 
 In addition to the standard 3D Star Map, this implementation includes a functional **Space Port UI** template for tracking live traffic and mission archives, following the [Space Travel Protocol](https://github.com/Federated-Planets/federated-planets/blob/main/TRAVEL.md).
 
@@ -18,6 +18,7 @@ This project uses Astro to dynamically generate the landing site and calculate d
 ## Space Port UI
 
 The Space Port section in `index.astro` is designed to be updated via API or local state to show:
+
 - **Live Traffic:** Ships preparing, departing, or arriving.
 - **Mission Archive:** A historical log of recent arrivals and departures.
 - **3D Coordinates:** All locations in the UI use the standard federation `XXX.XX:YYY.YY:ZZZ.ZZ` format, calculated automatically from domain names.
@@ -43,7 +44,7 @@ The Space Port section in `index.astro` is designed to be updated via API or loc
 
 ## Deployment
 
-This project is configured for **Cloudflare Pages**. 
+This project is configured for **Cloudflare Workers**.
 
 - **Build Command:** `npm run build`
 - **Output Directory:** `dist`
