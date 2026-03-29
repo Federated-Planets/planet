@@ -1,10 +1,6 @@
 {
   "name": "Towel 42 Space Outpost",
   "description": "A remote outpost in the Federated Planets. A quiet spot for deep-space weary travelers. Don't panic, but bring a towel.",
-  "canonical_url": "https://federatedplanets.com",
-  "coordinates": {
-    "x": 394.001,
-    "y": 162.787
-  },
+  "landing_site": "https://federatedplanets.com",
   "space_port": "https://federatedplanets.com/api/v1/port"
 }

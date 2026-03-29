@@ -3,17 +3,24 @@ const crypto = require('crypto');
 const path = require('path');
 const cheerio = require('cheerio');
 
-const calculateCoordinates = (domain) => {
+const formatCoord = (n) => n.toFixed(2).padStart(6, '0');
+
+const calculateCoordinates = (url) => {
+  const domain = new URL(url).hostname.toLowerCase();
   const hash = crypto.createHash('md5').update(domain).digest('hex');
+  
   const xHex = hash.slice(0, 6);
   const yHex = hash.slice(6, 12);
+  const zHex = hash.slice(12, 18);
   
-  const xCoord = (parseInt(xHex, 16) % 1000000) / 1000;
-  const yCoord = (parseInt(yHex, 16) % 1000000) / 1000;
+  const xCoord = (parseInt(xHex, 16) % 100000) / 100;
+  const yCoord = (parseInt(yHex, 16) % 100000) / 100;
+  const zCoord = (parseInt(zHex, 16) % 100000) / 100;
   
   return {
-    x: xCoord.toFixed(3),
-    y: yCoord.toFixed(3)
+    x: xCoord,
+    y: yCoord,
+    z: zCoord
   };
 };
 
@@ -36,14 +43,9 @@ const updateFiles = () => {
   }
   
   const manifest = JSON.parse(fs.readFileSync(manifestSrcPath, 'utf8'));
-  const myDomain = new URL(manifest.canonical_url).hostname;
-  const myCoords = calculateCoordinates(myDomain);
+  const myCoords = calculateCoordinates(manifest.landing_site);
   
-  manifest.coordinates = {
-    x: parseFloat(myCoords.x),
-    y: parseFloat(myCoords.y)
-  };
-  
+  // No longer saving coordinates to manifest per instructions
   fs.writeFileSync(manifestDistPath, JSON.stringify(manifest, null, 2));
   fs.copyFileSync(cssSrcPath, cssDistPath);
   fs.copyFileSync(jsSrcPath, jsDistPath);
@@ -51,16 +53,14 @@ const updateFiles = () => {
   const indexHtml = fs.readFileSync(indexSrcPath, 'utf8');
   const $ = cheerio.load(indexHtml);
 
-  $('link[rel="canonical"]').remove();
-  $('head').prepend(`\n    <link rel="canonical" href="${manifest.canonical_url}">`);
-
-  $('.coord-display').text(`${myCoords.x} - ${myCoords.y}`);
-  $('.crosshair').attr('transform', `translate(${myCoords.x}, ${myCoords.y})`);
-
-  const $courseLines = $('#map-course-lines');
-  const $planets = $('#map-planets');
-  $courseLines.empty();
-  $planets.empty();
+  // Update coordinate display in text
+  const myFormatted = `${formatCoord(myCoords.x)}:${formatCoord(myCoords.y)}:${formatCoord(myCoords.z)}`;
+  $('.coord-display').text(myFormatted);
+  
+  // Store my coordinates for ThreeJS (as raw numbers)
+  $('body').attr('data-my-x', myCoords.x);
+  $('body').attr('data-my-y', myCoords.y);
+  $('body').attr('data-my-z', myCoords.z);
 
   $('.warp-links li').each((i, el) => {
     const id = i + 1;
@@ -69,54 +69,26 @@ const updateFiles = () => {
     if (!link.length) return;
 
     const url = link.attr('href');
-    const domain = new URL(url).hostname;
-    const coords = calculateCoordinates(domain);
-    const name = link.text();
+    const coords = calculateCoordinates(url);
 
-    // 1. Wrap content in .neighbor-entry-content for flex layout
-    if ($(el).find('.neighbor-entry-content').length === 0) {
-      $(el).wrapInner('<div class="neighbor-entry-content"></div>');
-    }
-    const $content = $(el).find('.neighbor-entry-content');
-
-    // 2. Update/Add coordinate tag
+    // Update/Add coordinate tag directly inside the LI
     link.attr('data-id', id);
-    let coordTag = $content.find('code.coord');
+    link.attr('data-x', coords.x);
+    link.attr('data-y', coords.y);
+    link.attr('data-z', coords.z);
+    
+    let coordTag = $(el).find('code.coord');
     if (coordTag.length === 0) {
-      $content.append(` <code class="coord"></code>`);
-      coordTag = $content.find('code.coord');
+      $(el).append(` <code class="coord"></code>`);
+      coordTag = $(el).find('code.coord');
     }
-    coordTag.text(`${coords.x} - ${coords.y}`);
+    const neighborFormatted = `${formatCoord(coords.x)}:${formatCoord(coords.y)}:${formatCoord(coords.z)}`;
+    coordTag.text(neighborFormatted);
     coordTag.attr('data-id', id);
-
-    // 3. Generate SVG Circle
-    $planets.append(`
-              <circle
-                id="neighbor-circle-${id}"
-                class="neighbor-circle"
-                data-id="${id}"
-                cx="${coords.x}"
-                cy="${coords.y}"
-                r="4"
-              >
-                <title>${name} (${coords.x} - ${coords.y})</title>
-              </circle>`);
-
-    // 4. Generate Course Line
-    $courseLines.append(`
-              <line
-                id="course-line-${id}"
-                class="course-line"
-                data-id="${id}"
-                x1="${myCoords.x}"
-                y1="${myCoords.y}"
-                x2="${coords.x}"
-                y2="${coords.y}"
-              ></line>`);
   });
 
   fs.writeFileSync(indexDistPath, $.html());
-  console.log('Build complete: Ordered list support applied.');
+  console.log('Build complete: 3D Coordinates applied.');
 };
 
 updateFiles();
