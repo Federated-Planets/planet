@@ -4,13 +4,16 @@
   "description": "A decentralized space exploration game where every planet is a sovereign website.",
   "scripts": {
     "build": "node scripts/update-map.js",
-    "start": "serve dist"
+    "start": "serve dist",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "dependencies": {
     "cheerio": "^1.2.0"
   },
   "devDependencies": {
-    "serve": "^14.2.6"
+    "serve": "^14.2.6",
+    "wrangler": "^4.78.0"
   },
   "author": "",
   "license": "ISC"
