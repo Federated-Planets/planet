@@ -12,6 +12,10 @@ export default defineConfig({
   vite: {
     ssr: {
       external: ['cloudflare:workers'],
+      noExternal: ['zod', 'md5', 'cheerio'],
+    },
+    optimizeDeps: {
+      exclude: ['zod', 'md5', 'cheerio'],
     },
   },
 });
