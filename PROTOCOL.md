@@ -28,6 +28,7 @@ sequenceDiagram
     Note over Origin, D1: PHASE 3: RECORDING & TRANSIT
     Origin->>Origin: Collect Quorum (2f+1 signatures)
     Origin->>D1: Persist Approved Plan
+    Origin->>D1: Record DEPARTED in Archive
     Origin-->>Traveler: 200 OK (Travel Authorized)
     
     Note over Origin, Traveler: Ship Status: PREPARING
@@ -44,11 +45,13 @@ sequenceDiagram
     end
 
     Note over Traveler, Dest: PHASE 4: ARRIVAL & ARCHIVAL
-    Traveler->>Dest: Request Landing (Present Signed Plan)
-    Dest->>Dest: Verify Signatures & End_Timestamp
-    Dest->>D1: Update Status: ARRIVED
-    Dest->>D1: Move to Mission Archive (Last 10)
-    Dest-->>Traveler: Landing Cleared (Welcome!)
+    Traveler->>Dest: POST /land (Present Signed Plan)
+    Dest->>Dest: Verify Destination URL
+    Dest->>Dest: Verify Quorum (2f+1 Signatures)
+    Dest->>Dest: Verify End_Timestamp (Anti-Cheat)
+    Dest->>D1: Record ARRIVED in Archive
+    Dest->>D1: Delete Travel Plan (Journey Complete)
+    Dest-->>Traveler: 200 OK (Landing Authorization Granted)
 ```
 
 ## Protocol Summary
@@ -57,4 +60,4 @@ sequenceDiagram
 2.  **Consensus:** A Byzantine Fault Tolerant subset ($3f+1$) validates and signs the plan.
 3.  **Recording:** Once $2f+1$ signatures are collected, the plan is immutable and recognized by the federation.
 4.  **Transit:** Time is enforced by the federation; landing is only permitted after `End_Timestamp`.
-5.  **Archival:** Completed journeys are moved to an audit log.
+5.  **Arrival:** The destination verifies the signatures and timing before authorizing the landing and archiving the mission.
