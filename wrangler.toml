@@ -1,0 +1,13 @@
+name = "federated-planet"
+compatibility_date = "2024-04-03"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "planet_db"
+database_id = "your-d1-id-here" # To be replaced during deployment
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "your-kv-id-here" # To be replaced during deployment

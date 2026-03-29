@@ -1,6 +1,7 @@
 ---
 import md5 from 'md5';
 import manifest from '../../public/manifest.json';
+import { WARP_LINKS } from '../lib/config';
 
 const formatCoord = (n: number) => n.toFixed(2).padStart(6, '0');
 
@@ -26,45 +27,47 @@ const calculateCoordinates = (url: string) => {
 
 const myCoords = calculateCoordinates(manifest.landing_site);
 
-const traffic = [
-    { type: 'preparation', ship: 'X-99-R "Star-Skipper"', status: 'PREPARING', dir: 'to', planetName: 'Solaris Gate', url: 'https://solaris.gate.link', time: 'Dep: 12:00 FY' },
-    { type: 'outgoing', ship: 'S-42-X', status: 'DEPARTING', dir: 'to', planetName: 'Aether Reach', url: 'https://aether.reach.io', time: 'Arr: 14:30 FY' },
-    { type: 'incoming', ship: 'V-00-Z "The Great Unknown"', status: 'INCOMING', dir: 'from', planetName: 'Nova Prime', url: 'https://nova.prime.core', time: 'ETA: 10m' },
-];
+// Cloudflare D1 Integration
+import { env } from 'cloudflare:workers';
+const { DB } = (env as any) || {};
 
-const archive = [
-    { type: 'arrived', ship: 'A-12-B "Nomad"', status: 'ARRIVED', dir: 'from', planetName: 'Iron Star Forge', url: 'https://ironstar.forge', time: '09:15 FY' },
-    { type: 'departed', ship: 'D-45-C "Swift"', status: 'DEPARTED', dir: 'to', planetName: 'Neon Nebula', url: 'https://neon.nebula.web', time: '08:30 FY' },
-    { type: 'arrived', ship: 'K-88-M "Crystal Voyager"', status: 'ARRIVED', dir: 'from', planetName: 'Crystal Spire', url: 'https://crystal.spire.planet', time: '07:45 FY' },
-    { type: 'departed', ship: 'Z-11-Q "Nova One"', status: 'DEPARTED', dir: 'to', planetName: 'Nova Prime', url: 'https://nova.prime.core', time: '07:00 FY' },
-    { type: 'arrived', ship: 'L-33-W "Solar Wind"', status: 'ARRIVED', dir: 'from', planetName: 'Solaris Gate', url: 'https://solaris.gate.link', time: '06:15 FY' },
-    { type: 'departed', ship: 'P-55-T "Void Runner"', status: 'DEPARTED', dir: 'to', planetName: 'Void Runner Base', url: 'https://void.runner.base', time: '05:30 FY' },
-    { type: 'arrived', ship: 'B-99-F "Bazaar Trader"', status: 'ARRIVED', dir: 'from', planetName: 'Starlight Bazaar', url: 'https://starlight.bazaar.trade', time: '04:45 FY' },
-    { type: 'departed', ship: 'M-66-Y "Obsidian Crow"', status: 'DEPARTED', dir: 'to', planetName: 'Obsidian Moon', url: 'https://obsidian.moon.base', time: '04:00 FY' },
-    { type: 'arrived', ship: 'H-77-G "Elysium Wing"', status: 'ARRIVED', dir: 'from', planetName: 'Elysium Station', url: 'https://elysium.station.xyz', time: '03:15 FY' },
-    { type: 'departed', ship: 'T-22-J "Grip-Cracker"', status: 'DEPARTED', dir: 'to', planetName: 'Titan\'s Grip', url: 'https://titans.grip.mining', time: '02:30 FY' },
-];
+let traffic = [];
+let archive = [];
 
-const warpLinks = [
-  { name: 'Aether Reach', url: 'https://aether.reach.io' },
-  { name: 'Iron Star Forge', url: 'https://ironstar.forge' },
-  { name: 'Neon Nebula', url: 'https://neon.nebula.web' },
-  { name: 'Crystal Spire', url: 'https://crystal.spire.planet' },
-  { name: 'Rust Belt Outpost', url: 'https://rustbelt.outpost.space' },
-  { name: 'Nova Prime', url: 'https://nova.prime.core' },
-  { name: 'Solaris Gate', url: 'https://solaris.gate.link' },
-  { name: 'Void Runner Base', url: 'https://void.runner.base' },
-  { name: 'Starlight Bazaar', url: 'https://starlight.bazaar.trade' },
-  { name: 'Obsidian Moon', url: 'https://obsidian.moon.base' },
-  { name: 'Elysium Station', url: 'https://elysium.station.xyz' },
-  { name: 'Titan\'s Grip', url: 'https://titans.grip.mining' },
-  { name: 'Frozen Peak', url: 'https://frozen.peak.outpost' },
-  { name: 'Gale Force V', url: 'https://galeforce.five.storm' },
-  { name: 'The Monolith', url: 'https://the.monolith.mystery' },
-  { name: 'Explorers Outpost', url: 'https://www.nasa.gov/' },
-];
+if (DB) {
+    try {
+        const { results: activePlans } = await DB.prepare(`
+            SELECT * FROM travel_plans 
+            WHERE status != 'ARRIVED' 
+            AND (origin_url = ? OR destination_url = ?)
+            ORDER BY start_timestamp DESC
+        `).bind(manifest.landing_site, manifest.landing_site).all();
+        
+        traffic = activePlans.map((p: any) => ({
+            id: p.id,
+            type: p.origin_url === manifest.landing_site ? (Date.now() < p.start_timestamp ? 'preparation' : 'outgoing') : 'incoming',
+            ship: p.ship_id,
+            status: p.status,
+            dir: p.origin_url === manifest.landing_site ? 'to' : 'from',
+            planetName: p.origin_url === manifest.landing_site ? new URL(p.destination_url).hostname : new URL(p.origin_url).hostname,
+            url: p.origin_url === manifest.landing_site ? p.destination_url : p.origin_url,
+            time: Date.now() < p.start_timestamp ? `Dep: ${new Date(p.start_timestamp).toLocaleTimeString()}` : `Arr: ${new Date(p.end_timestamp).toLocaleTimeString()}`,
+            coords: calculateCoordinates(p.origin_url === manifest.landing_site ? p.destination_url : p.origin_url),
+            isArrivalReady: Date.now() >= p.end_timestamp && p.destination_url === manifest.landing_site,
+            rawPlan: p // Pass raw plan for landing action
+        }));
 
-const enrichedLinks = warpLinks.map((link, index) => {
+        const { results: archiveRecords } = await DB.prepare(`
+            SELECT * FROM mission_archive 
+            ORDER BY timestamp DESC LIMIT 10
+        `).all();
+        archive = archiveRecords;
+    } catch (e) {
+        console.error("Database fetch failed.", e);
+    }
+}
+
+const enrichedLinks = WARP_LINKS.map((link, index) => {
     return {
         ...link,
         id: index + 1,
@@ -101,65 +104,105 @@ const enrichedLinks = warpLinks.map((link, index) => {
 
     <div class="status-badge">Space Port Active</div>
 
+    <!-- The Flight Deck: Jumping Control -->
+    <div id="flight-deck" class="flight-deck hidden">
+        <div class="deck-content">
+            <h3>Initiate Jump Sequence</h3>
+            <div class="target-info">
+                <span class="label">Destination:</span>
+                <span id="target-name" class="value">---</span>
+            </div>
+            <div class="target-coords">
+                <span class="label">Coordinates:</span>
+                <code id="target-coords" class="value">---</code>
+            </div>
+            <div class="jump-metrics">
+                <div class="metric">
+                    <span class="label">Distance:</span>
+                    <span id="jump-distance" class="value">0.00</span> <span class="unit">sparsecs</span>
+                </div>
+                <div class="metric">
+                    <span class="label">Time:</span>
+                    <span id="jump-time" class="value">0.00</span> <span class="unit">FY</span>
+                </div>
+            </div>
+            <button id="initiate-jump" class="jump-button">JUMP</button>
+            <button id="cancel-jump" class="cancel-button">CANCEL</button>
+        </div>
+    </div>
+
     <section class="space-port">
       <div class="traffic-log">
         <h3>Live Space Port Traffic</h3>
-        <table class="traffic-table">
-          <thead>
-            <tr>
-              <th>Ship</th>
-              <th>Status</th>
-              <th>Location</th>
-              <th>Time/ETA</th>
-            </tr>
-          </thead>
-          <tbody>
-            {traffic.map(item => {
-              const coords = calculateCoordinates(item.url);
-              return (
-                <tr class={item.type}>
-                  <td class="ship-id">{item.ship}</td>
-                  <td><span class="status-label">{item.status}</span></td>
-                  <td class="location">
-                    {item.dir}: {item.planetName}<br />
-                    <code class="coord-sm">{coords.formatted}</code>
-                  </td>
-                  <td class="eta">{item.time}</td>
+        {traffic.length > 0 ? (
+            <table class="traffic-table">
+            <thead>
+                <tr>
+                <th>Ship</th>
+                <th>Status</th>
+                <th>Location</th>
+                <th>Time/ETA</th>
+                <th>Action</th>
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+                {traffic.map(item => (
+                    <tr class={item.type}>
+                    <td class="ship-id">{item.ship}</td>
+                    <td><span class="status-label">{item.status}</span></td>
+                    <td class="location">
+                        {item.dir}: {item.planetName}<br />
+                        <code class="coord-sm">{item.coords.formatted}</code>
+                    </td>
+                    <td class="eta">{item.time}</td>
+                    <td>
+                        {item.isArrivalReady && (
+                            <button 
+                                class="land-btn" 
+                                data-plan={JSON.stringify(item.rawPlan)}
+                            >
+                                LAND
+                            </button>
+                        )}
+                    </td>
+                    </tr>
+                ))}
+            </tbody>
+            </table>
+        ) : (
+            <p class="empty-msg">No active traffic in sector.</p>
+        )}
       </div>
 
       <div class="mission-archive">
         <h3>Recent Mission Archive</h3>
-        <table class="archive-table">
-          <thead>
-            <tr>
-              <th>Ship</th>
-              <th>Event</th>
-              <th>Location</th>
-              <th>Timestamp</th>
-            </tr>
-          </thead>
-          <tbody>
-            {archive.map(item => {
-              const coords = calculateCoordinates(item.url);
-              return (
-                <tr class={item.type}>
-                  <td class="ship-id">{item.ship}</td>
-                  <td><span class="event-label">{item.status}</span></td>
-                  <td class="location">
-                    {item.dir}: {item.planetName}<br />
-                    <code class="coord-sm">{coords.formatted}</code>
-                  </td>
-                  <td class="timestamp">{item.time}</td>
+        {archive.length > 0 ? (
+            <table class="archive-table">
+            <thead>
+                <tr>
+                <th>Ship</th>
+                <th>Event</th>
+                <th>Location</th>
+                <th>Timestamp</th>
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+                {archive.map((item: any) => (
+                <tr class={item.event.toLowerCase()}>
+                    <td class="ship-id">{item.ship_id}</td>
+                    <td><span class="event-label">{item.event}</span></td>
+                    <td class="location">
+                    {item.location_name}<br />
+                    <code class="coord-sm">{calculateCoordinates(item.location_url).formatted}</code>
+                    </td>
+                    <td class="timestamp">{new Date(item.timestamp).toLocaleTimeString()}</td>
+                </tr>
+                ))}
+            </tbody>
+            </table>
+        ) : (
+            <p class="empty-msg">Archive empty. Secure sector.</p>
+        )}
       </div>
     </section>
 
@@ -168,7 +211,7 @@ const enrichedLinks = warpLinks.map((link, index) => {
 
       <div class="warp-ring-content">
         <div class="star-map-wrapper">
-          <div class="star-map-container" id="three-container">
+          <div class="star-map-container" id="three-container" data-ships={JSON.stringify(traffic)}>
             <div class="map-label">1000x1000x1000 SPARSEC GRID</div>
           </div>
 
@@ -193,6 +236,8 @@ const enrichedLinks = warpLinks.map((link, index) => {
                 data-x={link.coords.x}
                 data-y={link.coords.y}
                 data-z={link.coords.z}
+                data-name={link.name}
+                data-formatted={link.coords.formatted}
               >
                 {link.name}
               </a>
@@ -209,5 +254,104 @@ const enrichedLinks = warpLinks.map((link, index) => {
       with
       <a href="https://github.com/Federated-Planets/planet">Source Codia</a>.
     </footer>
+
+    <script is:inline>
+        const myX = parseFloat(document.body.dataset.myX);
+        const myY = parseFloat(document.body.dataset.myY);
+        const myZ = parseFloat(document.body.dataset.myZ);
+
+        const flightDeck = document.getElementById('flight-deck');
+        const targetName = document.getElementById('target-name');
+        const targetCoords = document.getElementById('target-coords');
+        const jumpDistance = document.getElementById('jump-distance');
+        const jumpTime = document.getElementById('jump-time');
+        const initiateBtn = document.getElementById('initiate-jump');
+        const cancelBtn = document.getElementById('cancel-jump');
+
+        let currentTarget = null;
+
+        window.addEventListener('planetSelected', (e) => {
+            const data = e.detail;
+            currentTarget = data;
+            
+            targetName.textContent = data.name;
+            targetCoords.textContent = data.formatted;
+            
+            const dx = data.x - myX;
+            const dy = data.y - myY;
+            const dz = data.z - myZ;
+            const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            const time = distance / 100;
+            
+            jumpDistance.textContent = distance.toFixed(2);
+            jumpTime.textContent = time.toFixed(2);
+            
+            flightDeck.classList.remove('hidden');
+        });
+
+        cancelBtn.addEventListener('click', () => {
+            flightDeck.classList.add('hidden');
+            window.dispatchEvent(new CustomEvent('clearSelection'));
+        });
+
+        initiateBtn.addEventListener('click', async () => {
+            initiateBtn.disabled = true;
+            initiateBtn.textContent = 'CONSENSUS...';
+            
+            try {
+                const response = await fetch('/api/v1/port?action=initiate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ship_id: 'S-' + Math.random().toString(36).substr(2, 5).toUpperCase(),
+                        destination_url: currentTarget.url,
+                        departure_timestamp: Date.now()
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.plan) {
+                    alert('Travel Plan Approved by TCs! Transitioning to Preparation.');
+                    location.reload(); 
+                } else {
+                    alert('Consensus Rejected: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Consensus Error: ' + e.message);
+            } finally {
+                initiateBtn.disabled = false;
+                initiateBtn.textContent = 'JUMP';
+            }
+        });
+
+        // Landing Logic
+        document.querySelectorAll('.land-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const plan = JSON.parse(btn.dataset.plan);
+                btn.disabled = true;
+                btn.textContent = 'LANDING...';
+
+                try {
+                    const res = await fetch('/api/v1/port?action=land', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(plan)
+                    });
+                    const data = await res.json();
+                    if (data.message) {
+                        alert(data.message);
+                        location.reload();
+                    } else {
+                        alert(data.error);
+                    }
+                } catch (e) {
+                    alert("Landing failed: " + e.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'LAND';
+                }
+            });
+        });
+    </script>
   </body>
 </html>

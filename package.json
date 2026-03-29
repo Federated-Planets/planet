@@ -10,7 +10,9 @@
   "dependencies": {
     "@astrojs/cloudflare": "^13.1.4",
     "astro": "^6.1.1",
-    "md5": "^2.3.0"
+    "cheerio": "^1.2.0",
+    "md5": "^2.3.0",
+    "zod": "^4.3.6"
   },
   "author": "Sergey Chernyshev",
   "license": "Apache-2.0",
