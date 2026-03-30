@@ -26,6 +26,9 @@ const TravelPlanSchema = z.object({
   signatures: z.record(z.string()),
 });
 
+// Returns ms per Flight-Year. Default: 1 hour (production). Override with WARP_MS_PER_FY for dev.
+const msPerFY = (): number => parseInt((env as any).WARP_MS_PER_FY) || 3600 * 1000;
+
 // Simulation Overrides helper
 const getLocalPlanetInfo = (currentUrl: string) => {
     // Robust helper to get simulation variables
@@ -95,8 +98,6 @@ export const POST: APIRoute = async ({ request }) => {
         return await handlePrepare(request, KV, DB, localPlanet, TRAFFIC_CONTROL);
       case 'commit':
         return await handleCommit(request, KV, DB, localPlanet, TRAFFIC_CONTROL);
-      case 'land':
-        return await handleLanding(request, KV, DB, localPlanet, TRAFFIC_CONTROL);
       default:
         return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400 });
     }
@@ -183,7 +184,7 @@ async function handleInitiate(request: Request, KV: KVNamespace, DB: D1Database,
   const destCoords = TravelCalculator.calculateCoordinates(data.destination_url);
   const distance = TravelCalculator.calculateDistance(myCoords, destCoords);
   const travelTimeHours = TravelCalculator.calculateTravelTime(distance);
-  const endTimestamp = data.departure_timestamp + (travelTimeHours * 3600 * 1000);
+  const endTimestamp = data.departure_timestamp + (travelTimeHours * msPerFY());
   
   const discoveryPromises = WARP_LINKS.map(l => discoverSpacePort(l.url, DB));
   const discoveredNeighbors = (await Promise.all(discoveryPromises)).filter((n): n is PlanetManifest => n !== null);
@@ -236,7 +237,7 @@ async function handlePrepare(request: Request, KV: KVNamespace, DB: D1Database, 
   const destCoords = TravelCalculator.calculateCoordinates(plan.destination_url);
   const dist = TravelCalculator.calculateDistance(originCoords, destCoords);
   const expectedTime = TravelCalculator.calculateTravelTime(dist);
-  const actualTime = (plan.end_timestamp - plan.start_timestamp) / (3600 * 1000);
+  const actualTime = (plan.end_timestamp - plan.start_timestamp) / msPerFY();
   
   if (Math.abs(actualTime - expectedTime) > 0.01) {
       throw new Error("Invalid travel time calculation.");
@@ -295,59 +296,8 @@ async function handleCommit(request: Request, KV: KVNamespace, DB: D1Database, l
               JSON.stringify(existing.signatures)
           ).run();
 
-          await DB.prepare(`
-              INSERT INTO mission_archive (ship_id, event, location_name, location_url, timestamp)
-              VALUES (?, ?, ?, ?, ?)
-          `).bind(
-              existing.ship_id,
-              'DEPARTED',
-              new URL(existing.destination_url).hostname,
-              existing.destination_url,
-              Date.now()
-          ).run();
       }
   }
 
   return new Response(JSON.stringify({ success: true }), { status: 200 });
-}
-async function handleLanding(request: Request, KV: KVNamespace, DB: D1Database, localPlanet: any, TRAFFIC_CONTROL: any) {
-    const plan = TravelPlanSchema.parse(await request.json());
-
-    console.log(`[${localPlanet.name}] Handling landing request for ship ${plan.ship_id} from ${plan.origin_url}`);
-
-    if (plan.destination_url !== localPlanet.landing_site) {
-        console.error(`[${localPlanet.name}] Landing rejected: Incorrect destination. Expected ${localPlanet.landing_site}, got ${plan.destination_url}`);
-        throw new Error("Invalid destination for this space port.");
-    }
-
-    if (!ConsensusEngine.hasQuorum(plan)) {
-        console.error(`[${localPlanet.name}] Landing rejected: Insufficient signatures.`);
-        throw new Error("Insufficient signatures for landing authorization.");
-    }
-
-    if (Date.now() < plan.end_timestamp) {
-        console.error(`[${localPlanet.name}] Landing rejected: Warp skip detected.`);
-        throw new Error("Landing requested before End Timestamp. Warp skip detected.");
-    }
-
-    console.log(`[${localPlanet.name}] Landing authorization granted for ship ${plan.ship_id}.`);
-    await broadcastEvent(TRAFFIC_CONTROL, {
-        type: 'LANDING_AUTHORIZED',
-        planet: localPlanet.name,
-        ship_id: plan.ship_id
-    });
-    await DB.prepare(`
-        INSERT INTO mission_archive (ship_id, event, location_name, location_url, timestamp)
-        VALUES (?, ?, ?, ?, ?)
-    `).bind(
-        plan.ship_id,
-        'ARRIVED',
-        new URL(plan.origin_url).hostname,
-        plan.origin_url,
-        Date.now()
-    ).run();
-
-    await DB.prepare(`DELETE FROM travel_plans WHERE id = ?`).bind(plan.id).run();
-
-    return new Response(JSON.stringify({ message: "Landing Authorization Granted. Welcome!" }), { status: 200 });
 }

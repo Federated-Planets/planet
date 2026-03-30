@@ -58,18 +58,19 @@ let archive = [];
 
 if (DB) {
     try {
+        const now = Date.now();
+
         const { results: activePlans } = await DB.prepare(`
-            SELECT * FROM travel_plans 
-            WHERE status != 'ARRIVED' 
-            AND (origin_url = ? OR destination_url = ?)
+            SELECT * FROM travel_plans
+            WHERE end_timestamp > ? AND (origin_url = ? OR destination_url = ?)
             ORDER BY start_timestamp DESC
-        `).bind(landingSite, landingSite).all();
-        
+        `).bind(now, landingSite, landingSite).all();
+
         traffic = (activePlans || []).map((p: any) => {
             const isOrigin = p.origin_url === landingSite;
             const targetUrl = isOrigin ? p.destination_url : p.origin_url;
             const targetHostname = new URL(targetUrl).hostname;
-            const isPreparing = Date.now() < p.start_timestamp;
+            const isPreparing = now < p.start_timestamp;
             const type = isOrigin ? (isPreparing ? 'preparation' : 'outgoing') : 'incoming';
             const timeLabel = isPreparing ? `Dep: ${new Date(p.start_timestamp).toLocaleTimeString()}` : `Arr: ${new Date(p.end_timestamp).toLocaleTimeString()}`;
 
@@ -83,16 +84,24 @@ if (DB) {
                 url: targetUrl,
                 time: timeLabel,
                 coords: calculateCoordinates(targetUrl),
-                isArrivalReady: Date.now() >= p.end_timestamp && p.destination_url === landingSite,
+                originCoords: calculateCoordinates(p.origin_url),
+                destCoords: calculateCoordinates(p.destination_url),
                 rawPlan: p
             };
         });
 
         const { results: archiveRecords } = await DB.prepare(`
-            SELECT * FROM mission_archive 
-            ORDER BY timestamp DESC LIMIT 10
-        `).all();
-        archive = archiveRecords || [];
+            SELECT * FROM travel_plans
+            WHERE end_timestamp <= ? AND (origin_url = ? OR destination_url = ?)
+            ORDER BY end_timestamp DESC LIMIT 10
+        `).bind(now, landingSite, landingSite).all();
+        archive = (archiveRecords || []).map((p: any) => ({
+            ship_id: p.ship_id,
+            event: p.destination_url === landingSite ? 'ARRIVED' : 'DEPARTED',
+            location_name: new URL(p.destination_url === landingSite ? p.origin_url : p.destination_url).hostname,
+            location_url: p.destination_url === landingSite ? p.origin_url : p.destination_url,
+            timestamp: p.end_timestamp,
+        }));
     } catch (e) {
         console.error("Database fetch failed.", e);
     }
@@ -182,7 +191,6 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                 <th>Status</th>
                 <th>Location</th>
                 <th>Time/ETA</th>
-                <th>Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -194,16 +202,15 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                         {item.dir}: {item.planetName}<br />
                         <code class="coord-sm">{item.coords.formatted}</code>
                     </td>
-                    <td class="eta">{item.time}</td>
-                    <td>
-                        {item.isArrivalReady && (
-                            <button 
-                                class="land-btn" 
-                                data-plan={JSON.stringify(item.rawPlan)}
-                            >
-                                LAND
-                            </button>
-                        )}
+                    <td class="eta"
+                        data-start={item.rawPlan.start_timestamp}
+                        data-end={item.rawPlan.end_timestamp}
+                        data-type={item.type}
+>
+                      <div class="eta-time">{item.time}</div>
+                      <div class="eta-bar-track">
+                        <div class="eta-bar-fill"></div>
+                      </div>
                     </td>
                     </tr>
                 ))}
@@ -374,33 +381,20 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
             }
         });
 
-        document.querySelectorAll('.land-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const plan = JSON.parse(btn.dataset.plan);
-                btn.disabled = true;
-                btn.textContent = 'LANDING...';
-
-                try {
-                    const res = await fetch('/api/v1/port?action=land', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(plan)
-                    });
-                    const data = await res.json();
-                    if (data.message) {
-                        alert(data.message);
-                        location.reload();
-                    } else {
-                        alert(data.error);
-                    }
-                } catch (e) {
-                    alert("Landing failed: " + e.message);
-                } finally {
-                    btn.disabled = false;
-                    btn.textContent = 'LAND';
-                }
+        // Progress bars for Live Space Port Traffic
+        const updateEtaBars = () => {
+            const now = Date.now();
+            document.querySelectorAll('.eta[data-start]').forEach(td => {
+                const start = parseInt(td.dataset.start);
+                const end = parseInt(td.dataset.end);
+                const fill = td.querySelector('.eta-bar-fill');
+                if (!fill) return;
+                const p = Math.max(0, Math.min(1, (now - start) / (end - start)));
+                fill.style.width = (p * 100) + '%';
             });
-        });
+        };
+        updateEtaBars();
+        setInterval(updateEtaBars, 1000);
     </script>
   </body>
 </html>

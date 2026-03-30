@@ -82,38 +82,34 @@ const initThree = () => {
     planetPoints.push(line);
   });
 
-  // Calculate coordinates for any URL helper
-  // (Injected via Astro calculateCoordinates but repeated here for ships)
-  const getCoords = (url) => {
-      const myHost = new URL(document.body.dataset.landingSite || location.href).hostname;
-      const targetHost = new URL(url).hostname;
-      // We don't have MD5 in the browser easily without a library, 
-      // so for the map animation we'll rely on coordinates being passed in data-ships
-      // or we'll just skip ships that don't have coords.
-  };
-
   // Add Active Ships from Traffic
   const shipsData = JSON.parse(container.dataset.ships || '[]');
   shipsData.forEach(ship => {
+      const ox = ship.originCoords.x - 500;
+      const oy = ship.originCoords.y - 500;
+      const oz = ship.originCoords.z - 500;
+      const dx = ship.destCoords.x - 500;
+      const dy = ship.destCoords.y - 500;
+      const dz = ship.destCoords.z - 500;
+
+      // Travel line
+      const linePoints = [new THREE.Vector3(ox, oy, oz), new THREE.Vector3(dx, dy, dz)];
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x4fc3f7, transparent: true, opacity: 0.7 });
+      const travelLine = new THREE.Line(lineGeo, lineMat);
+      planetsGroup.add(travelLine);
+
+      // Ship mesh
       const shipGeo = new THREE.TetrahedronGeometry(10);
       const shipMat = new THREE.MeshBasicMaterial({ color: 0xf1c40f });
       const shipMesh = new THREE.Mesh(shipGeo, shipMat);
-      
-      const origin = ship.rawPlan.origin_url;
-      const dest = ship.rawPlan.destination_url;
-      
-      // We need the raw numeric coords for origin and destination
-      // The update-map script or Astro frontmatter should provide these.
-      // For now, let's assume we can derive them or they are in ship.coords
-      // Actually, ship.coords in index.astro is already the destination coords.
-      
+
       shipMesh.userData = {
           start: ship.rawPlan.start_timestamp,
           end: ship.rawPlan.end_timestamp,
-          originUrl: origin,
-          destUrl: dest
+          ox, oy, oz, dx, dy, dz
       };
-      
+
       planetsGroup.add(shipMesh);
       shipPoints.push(shipMesh);
   });
@@ -133,17 +129,17 @@ const initThree = () => {
     // Dynamic Ship Positioning (Lerp between origin and destination)
     const now = Date.now();
     shipPoints.forEach((s, i) => {
-        const { start, end, originUrl, destUrl } = s.userData;
-        
-        // Progress 0.0 to 1.0
+        const { start, end, ox, oy, oz, dx, dy, dz } = s.userData;
+
         let p = (now - start) / (end - start);
         p = Math.max(0, Math.min(1, p));
 
-        // Get coordinates (this is a bit hacky without a browser-side MD5)
-        // In a real app, we'd include origin/dest coords in the traffic data.
-        // For now, we'll just use dummy lerp or rotation if we don't have both coords.
+        s.position.set(
+            ox + (dx - ox) * p,
+            oy + (dy - oy) * p,
+            oz + (dz - oz) * p
+        );
         s.rotation.y += 0.05;
-        s.position.y += Math.sin(Date.now() * 0.002 + i) * 0.1;
     });
 
     renderer.render(scene, camera);

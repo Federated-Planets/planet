@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "description": "A decentralized space exploration game where every planet is a sovereign website.",
   "scripts": {
-    "dev": "astro build && wrangler dev -c wrangler.dev.jsonc",
+    "dev": "npm run build && wrangler dev -c wrangler.dev.jsonc",
     "dev:db:init": "wrangler d1 execute planet_db --file=schema.sql --local -c wrangler.dev.jsonc",
+    "dev:clean": "rm -rf .wrangler/state",
     "build": "astro build",
     "postbuild": "node scripts/inject-do-exports.js",
     "preview": "wrangler preview",

@@ -573,6 +573,34 @@ p {
   color: var(--warp-text-dim);
 }
 
+.eta-bar-track {
+  margin-top: 4px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.eta-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 2px;
+  transition: width 1s linear;
+}
+
+.preparation .eta-bar-fill {
+  background: #f1c40f;
+  opacity: 0.5;
+}
+
+.outgoing .eta-bar-fill {
+  background: #e67e22;
+}
+
+.incoming .eta-bar-fill {
+  background: #3498db;
+}
+
 .coord-sm {
   font-size: 0.7rem;
   opacity: 0.8;
