@@ -28,6 +28,9 @@
       }
     ]
   },
+  "vars": {
+    "WARP_MS_PER_FY": "10000"
+  },
   "migrations": [
     {
       "tag": "v1",
