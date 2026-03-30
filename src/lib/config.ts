@@ -1,4 +1,4 @@
-export const WARP_LINKS = [
+export const DEFAULT_WARP_LINKS = [
   { name: 'Aether Reach', url: 'https://aether.reach.io' },
   { name: 'Iron Star Forge', url: 'https://ironstar.forge' },
   { name: 'Neon Nebula', url: 'https://neon.nebula.web' },
@@ -16,3 +16,32 @@ export const WARP_LINKS = [
   { name: 'The Monolith', url: 'https://the.monolith.mystery' },
   { name: 'Explorers Outpost', url: 'https://www.nasa.gov/' },
 ];
+
+import { env as cloudflareEnv } from 'cloudflare:workers';
+
+// Robust helper to get simulation variables from any available environment source
+const getSimVar = (name: string): string | undefined => {
+    // 1. Check Cloudflare env object (for wrangler dev --var)
+    const env = cloudflareEnv as any;
+    if (env && env[name]) return env[name];
+    
+    // 2. Check process.env (traditional node/dev env)
+    if (typeof process !== 'undefined' && process.env && process.env[name]) return process.env[name];
+    
+    // 3. Check import.meta.env (build-time or astro-provided)
+    if (import.meta.env && import.meta.env[name]) return import.meta.env[name];
+    
+    return undefined;
+};
+
+export const getWarpLinks = () => {
+    try {
+        const simLinks = getSimVar('PUBLIC_SIM_WARP_LINKS');
+        if (simLinks) {
+            return JSON.parse(simLinks);
+        }
+    } catch (e) {}
+    return DEFAULT_WARP_LINKS;
+};
+
+export const WARP_LINKS = getWarpLinks();

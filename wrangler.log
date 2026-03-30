@@ -1,0 +1,16 @@
+
+ ⛅️ wrangler 4.78.0
+───────────────────
+Your Worker has access to the following bindings:
+Binding                                    Resource            Mode
+env.TRAFFIC_CONTROL (TrafficControl)       Durable Object      local
+env.KV (your-kv-id-here)                   KV Namespace        local
+env.DB (planet_db)                         D1 Database         local
+env.STATIC_ASSETS                          Assets              local
+
+⎔ Starting local server...
+[wrangler:info] Ready on http://localhost:8787
+[wrangler:info] GET /api/v1/control-ws 400 Bad Request (16ms)
+[TrafficControl] Initialized
+[wrangler:info] GET /api/v1/control-ws 101 Switching Protocols (10ms)
+⎔ Reloading local server...

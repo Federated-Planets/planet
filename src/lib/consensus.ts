@@ -22,6 +22,9 @@ export class ConsensusEngine {
     action: 'prepare' | 'commit',
     controllers: PlanetManifest[]
   ) {
+    const localName = import.meta.env.PUBLIC_SIM_PLANET_NAME || "Local Planet";
+    console.log(`[${localName}] Broadcasting ${action} for plan ${plan.id} to ${controllers.length} controllers`);
+
     const promises = controllers.map(async (tc) => {
       if (!tc.space_port) return;
       try {

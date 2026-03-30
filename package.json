@@ -3,16 +3,19 @@
   "version": "1.0.0",
   "description": "A decentralized space exploration game where every planet is a sovereign website.",
   "scripts": {
-    "dev": "astro dev",
+    "dev": "astro build && wrangler dev -c wrangler.dev.jsonc",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "wrangler preview",
+    "simulate": "node scripts/simulate-universe.js",
+    "test:integration": "node scripts/integration-test.js",
+    "test:warp-links": "node scripts/test-warp-links.js"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.1.4",
     "astro": "^6.1.1",
     "cheerio": "^1.2.0",
     "md5": "^2.3.0",
-    "zod": "^4.3.6"
+    "zod": "^3.25.76"
   },
   "author": "Sergey Chernyshev",
   "license": "Apache-2.0",

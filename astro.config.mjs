@@ -7,15 +7,14 @@ export default defineConfig({
     imageService: 'cloudflare',
     platformProxy: {
       enabled: true,
+      configPath: 'wrangler.jsonc',
+      persist: true,
     },
   }),
   vite: {
     ssr: {
       external: ['cloudflare:workers'],
-      noExternal: ['zod', 'md5', 'cheerio'],
-    },
-    optimizeDeps: {
-      exclude: ['zod', 'md5', 'cheerio'],
+      noExternal: true,
     },
   },
 });
