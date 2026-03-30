@@ -50,6 +50,8 @@ const planetDescription = "A remote outpost in the Federated Planets. A quiet sp
 
 const myCoords = calculateCoordinates(landingSite);
 
+const departureBuffer = parseInt(getSimVar('DEPARTURE_BUFFER_MS') || '') || 30 * 1000;
+
 // Cloudflare D1 Integration
 const { DB } = (env as any) || {};
 
@@ -63,7 +65,7 @@ if (DB) {
         const { results: activePlans } = await DB.prepare(`
             SELECT * FROM travel_plans
             WHERE end_timestamp > ? AND (origin_url = ? OR destination_url = ?)
-            ORDER BY start_timestamp DESC
+            ORDER BY start_timestamp ASC
         `).bind(now, landingSite, landingSite).all();
 
         traffic = (activePlans || []).map((p: any) => {
@@ -127,7 +129,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
     <script is:inline src="/three.min.js"></script>
     <script is:inline src="/map.js" defer></script>
   </head>
-  <body data-my-x={myCoords.x} data-my-y={myCoords.y} data-my-z={myCoords.z} data-landing-site={landingSite}>
+  <body data-my-x={myCoords.x} data-my-y={myCoords.y} data-my-z={myCoords.z} data-landing-site={landingSite} data-departure-buffer={departureBuffer}>
     <div class="planet-container">
       <div class="atmosphere"></div>
       <div class="ring-back"></div>
@@ -183,73 +185,72 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
     <section class="space-port">
       <div class="traffic-log">
         <h3>Live Space Port Traffic</h3>
-        {traffic.length > 0 ? (
-            <table class="traffic-table">
-            <thead>
-                <tr>
-                <th>Ship</th>
-                <th>Status</th>
-                <th>Location</th>
-                <th>Time/ETA</th>
-                </tr>
-            </thead>
-            <tbody>
-                {traffic.map(item => (
-                    <tr class={item.type}>
-                    <td class="ship-id">{item.ship}</td>
-                    <td><span class="status-label">{item.status}</span></td>
-                    <td class="location">
-                        {item.dir}: {item.planetName}<br />
-                        <code class="coord-sm">{item.coords.formatted}</code>
-                    </td>
-                    <td class="eta"
-                        data-start={item.rawPlan.start_timestamp}
-                        data-end={item.rawPlan.end_timestamp}
-                        data-type={item.type}
->
-                      <div class="eta-time">{item.time}</div>
-                      <div class="eta-bar-track">
-                        <div class="eta-bar-fill"></div>
-                      </div>
-                    </td>
-                    </tr>
-                ))}
-            </tbody>
-            </table>
-        ) : (
-            <p class="empty-msg">No active traffic in sector.</p>
-        )}
+        <table id="traffic-table" class="traffic-table" style={traffic.length === 0 ? 'display:none' : ''}>
+          <thead>
+            <tr>
+              <th>Ship</th>
+              <th>Status</th>
+              <th>Location</th>
+              <th>Time/ETA</th>
+            </tr>
+          </thead>
+          <tbody id="traffic-tbody">
+            {traffic.map(item => (
+              <tr class={`${item.type} status-${item.type === 'preparation' && item.status === 'TRANSIT' ? 'scheduled' : item.status.toLowerCase()}`}
+                  data-plan-id={item.id}
+                  data-ship-id={item.ship}
+                  data-event={item.type === 'incoming' ? 'ARRIVED' : 'DEPARTED'}
+                  data-location-name={item.planetName}
+                  data-location-coords={item.coords.formatted}>
+                <td class="ship-id">{item.ship}</td>
+                <td><span class="status-label">{item.type === 'preparation' && item.status === 'TRANSIT' ? 'SCHEDULED' : item.status === 'TRANSIT' ? 'IN TRANSIT' : item.status}</span></td>
+                <td class="location">
+                  {item.dir}: {item.planetName}<br />
+                  <code class="coord-sm">{item.coords.formatted}</code>
+                </td>
+                <td class="eta"
+                    data-filed={item.rawPlan.start_timestamp - departureBuffer}
+                    data-start={item.rawPlan.start_timestamp}
+                    data-end={item.rawPlan.end_timestamp}
+                    data-type={item.type}>
+                  <div class="eta-time">{item.time}</div>
+                  <div class="eta-bar-track">
+                    <div class="eta-bar-fill"></div>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p id="traffic-empty" class="empty-msg" style={traffic.length > 0 ? 'display:none' : ''}>No active traffic in sector.</p>
       </div>
 
       <div class="mission-archive">
         <h3>Recent Mission Archive</h3>
-        {archive.length > 0 ? (
-            <table class="archive-table">
-            <thead>
-                <tr>
-                <th>Ship</th>
-                <th>Event</th>
-                <th>Location</th>
-                <th>Timestamp</th>
-                </tr>
-            </thead>
-            <tbody>
-                {archive.map((item: any) => (
-                <tr class={item.event.toLowerCase()}>
-                    <td class="ship-id">{item.ship_id}</td>
-                    <td><span class="event-label">{item.event}</span></td>
-                    <td class="location">
-                    {item.location_name}<br />
-                    <code class="coord-sm">{calculateCoordinates(item.location_url).formatted}</code>
-                    </td>
-                    <td class="timestamp">{new Date(item.timestamp).toLocaleTimeString()}</td>
-                </tr>
-                ))}
-            </tbody>
-            </table>
-        ) : (
-            <p class="empty-msg">Archive empty. Secure sector.</p>
-        )}
+        <table id="archive-table" class="archive-table" style={archive.length === 0 ? 'display:none' : ''}>
+          <thead>
+            <tr>
+              <th>Ship</th>
+              <th>Event</th>
+              <th>Location</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody id="archive-tbody">
+            {archive.map((item: any) => (
+              <tr class={item.event.toLowerCase()}>
+                <td class="ship-id">{item.ship_id}</td>
+                <td><span class="event-label">{item.event}</span></td>
+                <td class="location">
+                  {item.location_name}<br />
+                  <code class="coord-sm">{calculateCoordinates(item.location_url).formatted}</code>
+                </td>
+                <td class="timestamp">{new Date(item.timestamp).toLocaleTimeString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p id="archive-empty" class="empty-msg" style={archive.length > 0 ? 'display:none' : ''}>Archive empty. Secure sector.</p>
       </div>
     </section>
 
@@ -350,11 +351,84 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
             window.dispatchEvent(new CustomEvent('clearSelection'));
         });
 
+        const archiveTable  = document.getElementById('archive-table');
+        const archiveTbody  = document.getElementById('archive-tbody');
+        const archiveEmpty  = document.getElementById('archive-empty');
+
+        const ARRIVED_LINGER_MS = 5000;
+
+        const moveToArchive = (row) => {
+            const event        = row.dataset.event || 'DEPARTED';
+            const locationName = row.dataset.locationName || '';
+            const locationCoords = row.dataset.locationCoords || '';
+            const shipId       = row.dataset.shipId || '';
+            const end          = parseInt(row.querySelector('.eta')?.dataset.end || '0');
+            const timestamp    = new Date(end || Date.now()).toLocaleTimeString();
+
+            const archiveRow = document.createElement('tr');
+            archiveRow.className = event.toLowerCase();
+            archiveRow.innerHTML = `
+                <td class="ship-id">${shipId}</td>
+                <td><span class="event-label">${event}</span></td>
+                <td class="location">${locationName}<br/><code class="coord-sm">${locationCoords}</code></td>
+                <td class="timestamp">${timestamp}</td>`;
+
+            archiveTbody.prepend(archiveRow);
+            archiveTable.style.display = '';
+            archiveEmpty.style.display = 'none';
+
+            // Keep archive to last 10 entries
+            while (archiveTbody.children.length > 10) archiveTbody.removeChild(archiveTbody.lastChild);
+
+            row.remove();
+            if (trafficTbody.children.length === 0) {
+                trafficTable.style.display = 'none';
+                trafficEmpty.style.display = '';
+            }
+        };
+
+        const setRowStatus = (row, statusKey, labelText) => {
+            row.classList.remove('status-preparing', 'status-scheduled', 'status-transit');
+            row.classList.add(`status-${statusKey}`);
+            row.querySelector('.status-label').textContent = labelText;
+        };
+
+        const trafficTable = document.getElementById('traffic-table');
+        const trafficTbody = document.getElementById('traffic-tbody');
+        const trafficEmpty = document.getElementById('traffic-empty');
+
+        const addTrafficRow = (plan, filedAt) => {
+            const destHostname = new URL(plan.destination_url).hostname;
+            const eta = new Date(plan.end_timestamp).toLocaleTimeString();
+            const tr = document.createElement('tr');
+            tr.className = 'outgoing status-preparing';
+            tr.dataset.planId = plan.id;
+            tr.dataset.shipId = plan.ship_id;
+            tr.dataset.event = 'DEPARTED';
+            tr.dataset.locationName = new URL(plan.destination_url).hostname;
+            tr.dataset.locationCoords = currentTarget.formatted;
+            tr.innerHTML = `
+                <td class="ship-id">${plan.ship_id}</td>
+                <td><span class="status-label">${plan.status}</span></td>
+                <td class="location">to: ${destHostname}<br/><code class="coord-sm">${currentTarget.formatted}</code></td>
+                <td class="eta" data-filed="${filedAt}" data-start="${plan.start_timestamp}" data-end="${plan.end_timestamp}" data-type="outgoing">
+                    <div class="eta-time">Arr: ${eta}</div>
+                    <div class="eta-bar-track"><div class="eta-bar-fill"></div></div>
+                </td>`;
+            trafficTbody.appendChild(tr);
+            trafficEmpty.style.display = 'none';
+            trafficTable.style.display = '';
+            document.querySelector('.space-port').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
+        const departureBufferMs = parseInt(document.body.dataset.departureBuffer || '30000');
+
         initiateBtn.addEventListener('click', async () => {
             const shipId = shipNameInput.value.trim() || 'UNKNOWN-SHIP';
+            const filedAt = Date.now();
             initiateBtn.disabled = true;
             initiateBtn.textContent = 'CONSENSUS...';
-            
+
             try {
                 const response = await fetch('/api/v1/port?action=initiate', {
                     method: 'POST',
@@ -365,32 +439,79 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                         departure_timestamp: Date.now()
                     })
                 });
-                
+
                 const data = await response.json();
                 if (data.plan) {
-                    alert('Travel Plan Approved by TCs! Transitioning to Preparation.');
-                    location.reload(); 
+                    addTrafficRow(data.plan, filedAt);
+                    flightDeck.classList.add('hidden');
+                    window.dispatchEvent(new CustomEvent('clearSelection'));
                 } else {
                     alert('Consensus Rejected: ' + (data.error || 'Unknown error'));
+                    initiateBtn.disabled = false;
+                    initiateBtn.textContent = 'JUMP';
                 }
             } catch (e) {
                 alert('Consensus Error: ' + e.message);
-            } finally {
                 initiateBtn.disabled = false;
                 initiateBtn.textContent = 'JUMP';
             }
         });
 
+        // WebSocket: live status updates from TrafficControl DO
+        const EVENT_STATUS = {
+            'PREPARE_PLAN':   'PREPARING',
+            'QUORUM_REACHED': 'IN TRANSIT',
+        };
+
+        const applyEvent = (event) => {
+            const status = EVENT_STATUS[event.type];
+            if (!status || !event.plan_id) return;
+            const row = document.querySelector(`tr[data-plan-id="${event.plan_id}"]`);
+            if (!row) return;
+            const startTime = parseInt(row.querySelector('.eta')?.dataset.start || '0');
+            const isScheduled = status === 'IN TRANSIT' && Date.now() < startTime;
+            setRowStatus(row, isScheduled ? 'scheduled' : status.toLowerCase(), isScheduled ? 'SCHEDULED' : status);
+        };
+
+        (() => {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const connect = () => {
+                const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/control-ws`);
+                ws.onmessage = (e) => {
+                    const msg = JSON.parse(e.data);
+                    if (msg.type === 'history') {
+                        msg.data.forEach(applyEvent);
+                    } else {
+                        applyEvent(msg);
+                    }
+                };
+                ws.onclose = () => setTimeout(connect, 3000);
+            };
+            connect();
+        })();
+
         // Progress bars for Live Space Port Traffic
         const updateEtaBars = () => {
             const now = Date.now();
             document.querySelectorAll('.eta[data-start]').forEach(td => {
+                const filed = parseInt(td.dataset.filed || td.dataset.start);
                 const start = parseInt(td.dataset.start);
                 const end = parseInt(td.dataset.end);
                 const fill = td.querySelector('.eta-bar-fill');
                 if (!fill) return;
-                const p = Math.max(0, Math.min(1, (now - start) / (end - start)));
+                const p = Math.max(0, Math.min(1, (now - filed) / (end - filed)));
                 fill.style.width = (p * 100) + '%';
+
+                const row = td.closest('tr');
+                if (!row) return;
+                if (row.classList.contains('status-scheduled') && now >= start) {
+                    setRowStatus(row, 'transit', 'IN TRANSIT');
+                }
+                if (now >= end && !row.classList.contains('status-arrived') && !row.dataset.arrivalScheduled) {
+                    row.dataset.arrivalScheduled = '1';
+                    setRowStatus(row, 'arrived', 'ARRIVED');
+                    setTimeout(() => moveToArchive(row), ARRIVED_LINGER_MS);
+                }
             });
         };
         updateEtaBars();

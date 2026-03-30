@@ -544,23 +544,45 @@ p {
   text-align: center;
 }
 
-/* Preparation Label */
-.preparation .status-label {
+/* Preparing (consensus in progress) */
+tr.status-preparing .status-label {
+  background: rgba(160, 160, 160, 0.15);
+  color: #aaa;
+  border: 1px solid rgba(160, 160, 160, 0.3);
+}
+tr.status-preparing .eta-bar-fill { background: #aaa; }
+
+/* Scheduled to Depart (quorum reached, awaiting start time) */
+tr.status-scheduled .status-label {
   background: rgba(241, 196, 15, 0.15);
   color: #f1c40f;
   border: 1px solid rgba(241, 196, 15, 0.3);
 }
+tr.status-scheduled .eta-bar-fill { background: #f1c40f; }
 
-/* Outgoing / Departed Label */
-.outgoing .status-label,
+/* Arrived (briefly shown before moving to archive) */
+tr.status-arrived .status-label {
+  background: rgba(46, 204, 113, 0.15);
+  color: #2ecc71;
+  border: 1px solid rgba(46, 204, 113, 0.3);
+}
+tr.status-arrived .eta-bar-fill { background: #2ecc71; }
+
+/* In Transit */
+tr.status-transit .status-label {
+  background: rgba(52, 152, 219, 0.15);
+  color: #3498db;
+  border: 1px solid rgba(52, 152, 219, 0.3);
+}
+tr.status-transit .eta-bar-fill { background: #3498db; }
+
+/* Archive event labels */
 .departed .event-label {
   background: rgba(230, 126, 34, 0.15);
   color: #e67e22;
   border: 1px solid rgba(230, 126, 34, 0.3);
 }
 
-/* Incoming / Arrived Label */
-.incoming .status-label,
 .arrived .event-label {
   background: rgba(52, 152, 219, 0.15);
   color: #3498db;
@@ -588,18 +610,6 @@ p {
   transition: width 1s linear;
 }
 
-.preparation .eta-bar-fill {
-  background: #f1c40f;
-  opacity: 0.5;
-}
-
-.outgoing .eta-bar-fill {
-  background: #e67e22;
-}
-
-.incoming .eta-bar-fill {
-  background: #3498db;
-}
 
 .coord-sm {
   font-size: 0.7rem;

@@ -28,6 +28,7 @@ const TravelPlanSchema = z.object({
 
 // Returns ms per Flight-Year. Default: 1 hour (production). Override with WARP_MS_PER_FY for dev.
 const msPerFY = (): number => parseInt((env as any).WARP_MS_PER_FY) || 3600 * 1000;
+const departureBuffer = (): number => parseInt((env as any).DEPARTURE_BUFFER_MS) || 30 * 1000;
 
 // Simulation Overrides helper
 const getLocalPlanetInfo = (currentUrl: string) => {
@@ -184,7 +185,8 @@ async function handleInitiate(request: Request, KV: KVNamespace, DB: D1Database,
   const destCoords = TravelCalculator.calculateCoordinates(data.destination_url);
   const distance = TravelCalculator.calculateDistance(myCoords, destCoords);
   const travelTimeHours = TravelCalculator.calculateTravelTime(distance);
-  const endTimestamp = data.departure_timestamp + (travelTimeHours * msPerFY());
+  const startTimestamp = data.departure_timestamp + departureBuffer();
+  const endTimestamp = startTimestamp + (travelTimeHours * msPerFY());
   
   const discoveryPromises = WARP_LINKS.map(l => discoverSpacePort(l.url, DB));
   const discoveredNeighbors = (await Promise.all(discoveryPromises)).filter((n): n is PlanetManifest => n !== null);
@@ -205,7 +207,7 @@ async function handleInitiate(request: Request, KV: KVNamespace, DB: D1Database,
     ship_id: data.ship_id,
     origin_url: localPlanet.landing_site,
     destination_url: data.destination_url,
-    start_timestamp: data.departure_timestamp,
+    start_timestamp: startTimestamp,
     end_timestamp: endTimestamp,
     status: 'PREPARING',
     traffic_controllers: electedTCs.map(tc => tc.landing_site),
