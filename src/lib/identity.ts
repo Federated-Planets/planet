@@ -4,9 +4,7 @@ export class PlanetIdentity {
   /**
    * Retrieves or generates the planet's Ed25519 identity keys from KV.
    */
-  static async getIdentity(
-    KV: KVNamespace,
-  ): Promise<{
+  static async getIdentity(KV: KVNamespace): Promise<{
     publicKey: CryptoKey;
     privateKey: CryptoKey;
     publicKeyBase64: string;
