@@ -1,19 +1,19 @@
-import { defineConfig } from 'astro/config';
-import cloudflare from '@astrojs/cloudflare';
+import { defineConfig } from "astro/config";
+import cloudflare from "@astrojs/cloudflare";
 
 export default defineConfig({
-  output: 'server',
+  output: "server",
   adapter: cloudflare({
-    imageService: 'cloudflare',
+    imageService: "cloudflare",
     platformProxy: {
       enabled: true,
-      configPath: 'wrangler.build.jsonc',
+      configPath: "wrangler.build.jsonc",
       persist: true,
     },
   }),
   vite: {
     ssr: {
-      external: ['cloudflare:workers'],
+      external: ["cloudflare:workers"],
       noExternal: true,
     },
   },

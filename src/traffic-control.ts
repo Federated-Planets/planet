@@ -1,4 +1,4 @@
-import { DurableObject } from 'cloudflare:workers';
+import { DurableObject } from "cloudflare:workers";
 
 export default class TrafficControl extends DurableObject {
   private sessions: Set<WebSocket> = new Set();
@@ -26,9 +26,9 @@ export default class TrafficControl extends DurableObject {
       // @ts-ignore
       server.accept();
       this.sessions.add(server);
-      
-      server.send(JSON.stringify({ type: 'history', data: this.events }));
-      
+
+      server.send(JSON.stringify({ type: "history", data: this.events }));
+
       server.addEventListener("close", () => this.sessions.delete(server));
       server.addEventListener("error", () => this.sessions.delete(server));
 
@@ -36,7 +36,7 @@ export default class TrafficControl extends DurableObject {
     }
 
     return new Response(JSON.stringify(this.events), {
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
     });
   }
 

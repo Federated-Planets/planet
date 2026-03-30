@@ -550,7 +550,9 @@ tr.status-preparing .status-label {
   color: #aaa;
   border: 1px solid rgba(160, 160, 160, 0.3);
 }
-tr.status-preparing .eta-bar-fill { background: #aaa; }
+tr.status-preparing .eta-bar-fill {
+  background: #aaa;
+}
 
 /* Scheduled to Depart (quorum reached, awaiting start time) */
 tr.status-scheduled .status-label {
@@ -558,7 +560,9 @@ tr.status-scheduled .status-label {
   color: #f1c40f;
   border: 1px solid rgba(241, 196, 15, 0.3);
 }
-tr.status-scheduled .eta-bar-fill { background: #f1c40f; }
+tr.status-scheduled .eta-bar-fill {
+  background: #f1c40f;
+}
 
 /* Arrived (briefly shown before moving to archive) */
 tr.status-arrived .status-label {
@@ -566,7 +570,9 @@ tr.status-arrived .status-label {
   color: #2ecc71;
   border: 1px solid rgba(46, 204, 113, 0.3);
 }
-tr.status-arrived .eta-bar-fill { background: #2ecc71; }
+tr.status-arrived .eta-bar-fill {
+  background: #2ecc71;
+}
 
 /* In Transit */
 tr.status-transit .status-label {
@@ -574,7 +580,9 @@ tr.status-transit .status-label {
   color: #3498db;
   border: 1px solid rgba(52, 152, 219, 0.3);
 }
-tr.status-transit .eta-bar-fill { background: #3498db; }
+tr.status-transit .eta-bar-fill {
+  background: #3498db;
+}
 
 /* Archive event labels */
 .departed .event-label {
@@ -610,7 +618,6 @@ tr.status-transit .eta-bar-fill { background: #3498db; }
   transition: width 1s linear;
 }
 
-
 .coord-sm {
   font-size: 0.7rem;
   opacity: 0.8;
@@ -620,8 +627,9 @@ tr.status-transit .eta-bar-fill { background: #3498db; }
 /* Flight Deck */
 .flight-deck {
   position: fixed;
-  bottom: 2rem;
-  right: 2rem;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: 300px;
   background: var(--warp-bg);
   border: 1px solid var(--warp-accent);
@@ -630,11 +638,13 @@ tr.status-transit .eta-bar-fill { background: #3498db; }
   z-index: 1000;
   backdrop-filter: blur(10px);
   padding: 1.5rem;
-  transition: transform 0.3s ease, opacity 0.3s ease;
+  transition:
+    transform 0.3s ease,
+    opacity 0.3s ease;
 }
 
 .flight-deck.hidden {
-  transform: translateY(20px);
+  transform: translate(-50%, calc(-50% + 20px));
   opacity: 0;
   pointer-events: none;
 }
@@ -650,7 +660,9 @@ tr.status-transit .eta-bar-fill { background: #3498db; }
   margin-bottom: 1rem;
 }
 
-.target-info, .target-coords, .metric {
+.target-info,
+.target-coords,
+.metric {
   margin-bottom: 0.8rem;
   font-size: 0.85rem;
   display: flex;
@@ -738,6 +750,41 @@ tr.status-transit .eta-bar-fill { background: #3498db; }
 
 .archive-table td {
   font-size: 0.8rem;
+}
+
+#archive-controls {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.archive-see-all,
+.archive-nav {
+  background: transparent;
+  border: 1px solid var(--warp-accent);
+  color: var(--warp-accent);
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-family: "Courier New", monospace;
+}
+
+.archive-see-all:hover,
+.archive-nav:hover:not(:disabled) {
+  background: rgba(74, 144, 226, 0.15);
+}
+
+.archive-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.archive-page-label {
+  font-size: 0.75rem;
+  color: var(--warp-text-dim);
+  font-family: "Courier New", monospace;
 }
 
 @media (max-width: 600px) {

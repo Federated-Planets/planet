@@ -30,9 +30,9 @@ sequenceDiagram
     Origin->>D1: Persist Approved Plan
     Origin->>D1: Record DEPARTED in Archive
     Origin-->>Traveler: 200 OK (Travel Authorized)
-    
+
     Note over Origin, Traveler: Ship Status: PREPARING
-    
+
     rect rgb(20, 25, 35)
         Note right of Origin: Wait for Start_Timestamp
     end
