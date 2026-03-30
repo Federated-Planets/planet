@@ -146,6 +146,16 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                 <span class="label">Coordinates:</span>
                 <code id="target-coords" class="value">---</code>
             </div>
+            <div class="ship-input-group" style="margin-bottom: 1rem;">
+                <label for="ship-name" class="label" style="display: block; margin-bottom: 0.3rem;">Ship Designation:</label>
+                <input 
+                    type="text" 
+                    id="ship-name" 
+                    class="ship-input" 
+                    placeholder="Enter ship name..."
+                    style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--warp-accent); color: #fff; padding: 0.5rem; border-radius: 4px; font-family: 'Courier New', monospace;"
+                />
+            </div>
             <div class="jump-metrics">
                 <div class="metric">
                     <span class="label">Distance:</span>
@@ -295,10 +305,18 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         const targetCoords = document.getElementById('target-coords');
         const jumpDistance = document.getElementById('jump-distance');
         const jumpTime = document.getElementById('jump-time');
+        const shipNameInput = document.getElementById('ship-name');
         const initiateBtn = document.getElementById('initiate-jump');
         const cancelBtn = document.getElementById('cancel-jump');
 
         let currentTarget = null;
+
+        const generateShipSuggestion = () => {
+            const prefixes = ['SS', 'HMS', 'NCC', 'RA', 'X'];
+            const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+            const suffix = Math.random().toString(36).substr(2, 4).toUpperCase();
+            return `${prefix}-${suffix}`;
+        };
 
         window.addEventListener('planetSelected', (e) => {
             const data = e.detail;
@@ -306,6 +324,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
             
             targetName.textContent = data.name;
             targetCoords.textContent = data.formatted;
+            shipNameInput.value = generateShipSuggestion();
             
             const dx = data.x - myX;
             const dy = data.y - myY;
@@ -325,6 +344,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         });
 
         initiateBtn.addEventListener('click', async () => {
+            const shipId = shipNameInput.value.trim() || 'UNKNOWN-SHIP';
             initiateBtn.disabled = true;
             initiateBtn.textContent = 'CONSENSUS...';
             
@@ -333,7 +353,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        ship_id: 'S-' + Math.random().toString(36).substr(2, 5).toUpperCase(),
+                        ship_id: shipId,
                         destination_url: currentTarget.url,
                         departure_timestamp: Date.now()
                     })
