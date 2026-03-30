@@ -21,7 +21,7 @@ const TravelPlanSchema = z.object({
   destination_url: z.string().url(),
   start_timestamp: z.number(),
   end_timestamp: z.number(),
-  status: z.enum(["PREPARING", "TRANSIT", "ARRIVED"]),
+  status: z.enum(["PREPARING", "PLAN_ACCEPTED"]),
   traffic_controllers: z.array(z.string()),
   signatures: z.record(z.string()),
 });
@@ -109,6 +109,26 @@ export const GET: APIRoute = async ({ request }) => {
     });
   }
 
+  if (action === "neighbors") {
+    const urls = WARP_LINKS.map((l) => l.url);
+    if (!DB || urls.length === 0) {
+      return new Response(JSON.stringify({ neighbors: [] }), { status: 200 });
+    }
+    const placeholders = urls.map(() => "?").join(",");
+    const rows = await DB.prepare(
+      `SELECT planet_url, name, space_port_url FROM traffic_controllers
+       WHERE planet_url IN (${placeholders}) AND space_port_url IS NOT NULL AND space_port_url != ''`,
+    )
+      .bind(...urls)
+      .all();
+    const neighbors = (rows.results || []).map((r: any) => ({
+      name: r.name,
+      landing_site: r.planet_url,
+      space_port: r.space_port_url,
+    }));
+    return new Response(JSON.stringify({ neighbors }), { status: 200 });
+  }
+
   return new Response(JSON.stringify({ error: "Invalid action" }), {
     status: 400,
   });
@@ -148,6 +168,14 @@ export const POST: APIRoute = async ({ request }) => {
         );
       case "prepare":
         return await handlePrepare(
+          request,
+          KV,
+          DB,
+          localPlanet,
+          TRAFFIC_CONTROL,
+        );
+      case "register":
+        return await handleRegister(
           request,
           KV,
           DB,
@@ -293,40 +321,89 @@ async function handleInitiate(
     );
   }
 
-  const discoveredNeighbors = neighborResults.filter(
+  const originNeighbors = neighborResults.filter(
     (n): n is PlanetManifest => n !== null,
   );
 
-  if (
-    !discoveredNeighbors.find(
-      (n) => n.landing_site === localPlanet.landing_site,
-    )
-  ) {
-    discoveredNeighbors.push({
+  // Fetch destination's known neighbors so we can elect TCs from both sides
+  let destNeighbors: PlanetManifest[] = [];
+  try {
+    const res = await fetch(`${destManifest.space_port}?action=neighbors`, {
+      headers: { "X-Planet-Origin": localPlanet.landing_site },
+    });
+    if (res.ok) {
+      const json: any = await res.json();
+      destNeighbors = (json.neighbors || []).filter(
+        (n: any): n is PlanetManifest => n.landing_site && n.space_port,
+      );
+    }
+  } catch (e: any) {
+    console.warn(
+      `[${localPlanet.name}] Could not fetch destination neighbors: ${e.message}`,
+    );
+  }
+
+  // Origin and destination are mandatory TC participants — their votes are always required
+  const mandatoryTCs: PlanetManifest[] = [
+    {
       name: localPlanet.name,
       landing_site: localPlanet.landing_site,
       space_port: localPlanet.space_port,
-    });
-  }
+    },
+    destManifest,
+  ];
 
   // Require at least 4 controllers (3f+1 where f≥1) for meaningful fault tolerance
   const MIN_CONTROLLERS = 4;
-  if (discoveredNeighbors.length < MIN_CONTROLLERS) {
+
+  // Elect remaining slots equally from each neighbor pool, excluding mandatory TCs
+  const remaining = MIN_CONTROLLERS - mandatoryTCs.length;
+  const halfRemaining = Math.ceil(remaining / 2);
+  const seed = `${myCoords.x}${myCoords.y}${myCoords.z}${destCoords.x}${destCoords.y}${destCoords.z}${data.departure_timestamp}`;
+
+  // Deduplicate each pool against mandatory TCs, then against each other so a
+  // planet shared by both neighbor lists is only counted once across the pools.
+  const mandatoryUrls = new Set(mandatoryTCs.map((m) => m.landing_site));
+
+  const originPool = originNeighbors.filter(
+    (n) => !mandatoryUrls.has(n.landing_site),
+  );
+  const originPoolUrls = new Set(originPool.map((n) => n.landing_site));
+  const destPool = destNeighbors.filter(
+    (n) =>
+      !mandatoryUrls.has(n.landing_site) && !originPoolUrls.has(n.landing_site),
+  );
+
+  const originElected = TravelCalculator.electControllers(
+    seed,
+    originPool,
+    halfRemaining,
+  );
+  const originElectedUrls = new Set(originElected.map((n) => n.landing_site));
+  // Dest pool is already disjoint from origin pool; additionally exclude any
+  // origin-elected candidates to avoid reducing effective diversity.
+  const destPoolFiltered = destPool.filter(
+    (n) => !originElectedUrls.has(n.landing_site),
+  );
+  const destElected = TravelCalculator.electControllers(
+    seed,
+    destPoolFiltered,
+    halfRemaining,
+  );
+
+  // Combine: mandatory first, then elected (already disjoint, no further dedup needed)
+  const electedTCs = [...mandatoryTCs, ...originElected, ...destElected];
+
+  if (electedTCs.length < MIN_CONTROLLERS) {
     return new Response(
       JSON.stringify({
         error: "insufficient_controllers",
-        found: discoveredNeighbors.length,
+        found: electedTCs.length,
         required: MIN_CONTROLLERS,
       }),
       { status: 422 },
     );
   }
-
-  const seed = `${myCoords.x}${myCoords.y}${myCoords.z}${destCoords.x}${destCoords.y}${destCoords.z}${data.departure_timestamp}`;
-  const electedTCs = TravelCalculator.electControllers(
-    seed,
-    discoveredNeighbors,
-  );
 
   const plan: TravelPlan = {
     id: crypto.randomUUID(),
@@ -398,6 +475,91 @@ async function handlePrepare(
 
   return new Response(JSON.stringify({ success: true }), { status: 200 });
 }
+async function handleRegister(
+  request: Request,
+  KV: KVNamespace,
+  DB: D1Database,
+  localPlanet: any,
+  TRAFFIC_CONTROL: any,
+) {
+  const plan = TravelPlanSchema.parse(await request.json());
+
+  console.log(
+    `[${localPlanet.name}] Registering incoming plan ${plan.id} for ship ${plan.ship_id}`,
+  );
+
+  // Verify this planet is the intended destination
+  if (
+    new URL(plan.destination_url).origin !==
+    new URL(localPlanet.landing_site).origin
+  ) {
+    return new Response(JSON.stringify({ error: "not_our_destination" }), {
+      status: 422,
+    });
+  }
+
+  // Verify travel time math (same check as handlePrepare)
+  const originCoords = TravelCalculator.calculateCoordinates(plan.origin_url);
+  const destCoords = TravelCalculator.calculateCoordinates(
+    plan.destination_url,
+  );
+  const dist = TravelCalculator.calculateDistance(originCoords, destCoords);
+  const expectedTime = TravelCalculator.calculateTravelTime(dist);
+  const actualTime = (plan.end_timestamp - plan.start_timestamp) / msPerFY();
+  if (Math.abs(actualTime - expectedTime) > 0.01) {
+    return new Response(JSON.stringify({ error: "invalid_travel_time" }), {
+      status: 422,
+    });
+  }
+
+  // Anti-cheat: plan must not have already expired
+  if (Date.now() > plan.end_timestamp) {
+    return new Response(JSON.stringify({ error: "plan_expired" }), {
+      status: 422,
+    });
+  }
+
+  // Require quorum before accepting the plan
+  if (!ConsensusEngine.hasQuorum(plan)) {
+    return new Response(JSON.stringify({ error: "insufficient_quorum" }), {
+      status: 422,
+    });
+  }
+
+  const alreadyStored = await DB.prepare(
+    `SELECT id FROM travel_plans WHERE id = ?`,
+  )
+    .bind(plan.id)
+    .first();
+
+  if (!alreadyStored) {
+    await DB.prepare(
+      `INSERT OR IGNORE INTO travel_plans (id, ship_id, origin_url, destination_url, start_timestamp, end_timestamp, status, signatures)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        plan.id,
+        plan.ship_id,
+        plan.origin_url,
+        plan.destination_url,
+        plan.start_timestamp,
+        plan.end_timestamp,
+        plan.status,
+        JSON.stringify(plan.signatures),
+      )
+      .run();
+
+    await broadcastEvent(TRAFFIC_CONTROL, {
+      type: "INCOMING_REGISTERED",
+      planet: localPlanet.name,
+      ship_id: plan.ship_id,
+      plan_id: plan.id,
+    });
+  }
+
+  return new Response(JSON.stringify({ success: true }), { status: 200 });
+}
+
 async function handleCommit(
   request: Request,
   KV: KVNamespace,
@@ -426,18 +588,46 @@ async function handleCommit(
 
     if (!alreadyArchived) {
       console.log(
-        `[${localPlanet.name}] Quorum reached for plan ${existing.id}. Archiving mission.`,
+        `[${localPlanet.name}] Quorum reached for plan ${existing.id}. Registering with destination.`,
       );
 
-      existing.status = "TRANSIT";
+      existing.status = "PLAN_ACCEPTED";
       await ConsensusEngine.savePlanState(KV, existing);
 
-      await broadcastEvent(TRAFFIC_CONTROL, {
-        type: "QUORUM_REACHED",
-        planet: localPlanet.name,
-        ship_id: existing.ship_id,
-        plan_id: existing.id,
-      });
+      // Register with destination synchronously — must succeed before committing locally
+      const destManifest = await discoverSpacePort(existing.destination_url, DB);
+      if (!destManifest?.space_port) {
+        return new Response(
+          JSON.stringify({ error: "Destination space port not found" }),
+          { status: 502 },
+        );
+      }
+
+      const registerResp = await fetch(
+        `${destManifest.space_port}?action=register`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Planet-Origin": localPlanet.landing_site,
+          },
+          body: JSON.stringify(existing),
+        },
+      );
+
+      if (!registerResp.ok) {
+        const body = await registerResp.text().catch(() => "");
+        console.warn(
+          `[${localPlanet.name}] Destination rejected plan registration: ${registerResp.status} ${body}`,
+        );
+        return new Response(
+          JSON.stringify({
+            error: "Destination rejected plan",
+            status: registerResp.status,
+          }),
+          { status: 502 },
+        );
+      }
 
       await DB.prepare(
         `
@@ -456,6 +646,13 @@ async function handleCommit(
           JSON.stringify(existing.signatures),
         )
         .run();
+
+      await broadcastEvent(TRAFFIC_CONTROL, {
+        type: "QUORUM_REACHED",
+        planet: localPlanet.name,
+        ship_id: existing.ship_id,
+        plan_id: existing.id,
+      });
     }
   }
 
