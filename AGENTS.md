@@ -1,5 +1,7 @@
 # Implementation Plan: Space Travel Protocol
 
+This document outlines the technical strategy for implementing the **Elected Traffic Controllers (ETC)** protocol within the Astro-based `planet` implementation.
+
 ## Development Notes
 
 After any code changes:
@@ -7,7 +9,7 @@ After any code changes:
 1. Run `npm run format` to format all files with Prettier.
 2. Run `npm run build` to verify the build succeeds.
 
-This document outlines the technical strategy for implementing the **Elected Traffic Controllers (ETC)** protocol within the Astro-based `planet` implementation.
+Run these commands one after another to make sure they match permissions.
 
 ## 1. Architecture Overview
 

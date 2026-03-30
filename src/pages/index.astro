@@ -620,7 +620,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
           "Shuttle " + (shipNameInput.value.trim() || "UNKNOWN-SHIP");
         const filedAt = Date.now();
         initiateBtn.disabled = true;
-        initiateBtn.textContent = "CONSENSUS...";
+        initiateBtn.textContent = "Electing Traffic Controllers...";
 
         try {
           const response = await fetch("/api/v1/port?action=initiate", {
