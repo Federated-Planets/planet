@@ -5,7 +5,7 @@ This document outlines the technical strategy for implementing the **Elected Tra
 ## 1. Architecture Overview
 
 - **Framework:** Astro (SSR mode)
-- **Runtime:** Cloudflare Pages Functions
+- **Runtime:** Cloudflare Workers (Note: This is a Worker project, NOT a Pages project)
 - **Database:** Cloudflare D1 (Local state, Mission Archive, Traffic Logs)
 - **State/Cache:** Cloudflare KV (Cryptographic keys, Distributed Ledger cache)
 - **Validation:** Zod

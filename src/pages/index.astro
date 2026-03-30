@@ -1,9 +1,23 @@
 ---
 import md5 from 'md5';
-import manifest from '../../public/manifest.json';
+import { env } from 'cloudflare:workers';
 import { WARP_LINKS } from '../lib/config';
 
 const formatCoord = (n: number) => n.toFixed(2).padStart(6, '0');
+
+// Robust helper to get simulation variables from any available environment source
+const getSimVar = (name: string): string | undefined => {
+    // 1. Check Cloudflare env object (for wrangler dev --var)
+    if (env && (env as any)[name]) return (env as any)[name];
+    
+    // 2. Check process.env (traditional node/dev env)
+    if (typeof process !== 'undefined' && process.env && (process.env as any)[name]) return (process.env as any)[name];
+    
+    // 3. Check import.meta.env (build-time or astro-provided)
+    if (import.meta.env && (import.meta.env as any)[name]) return (import.meta.env as any)[name];
+    
+    return undefined;
+};
 
 const calculateCoordinates = (url: string) => {
   const domain = new URL(url).hostname.toLowerCase();
@@ -25,10 +39,18 @@ const calculateCoordinates = (url: string) => {
   };
 };
 
-const myCoords = calculateCoordinates(manifest.landing_site);
+// Simulation Overrides
+const simName = getSimVar('PUBLIC_SIM_PLANET_NAME');
+const simUrl = getSimVar('PUBLIC_SIM_LANDING_SITE');
+
+const planetName = simName || "Towel 42 Space Outpost";
+const landingSite = simUrl || Astro.url.origin;
+
+const planetDescription = "A remote outpost in the Federated Planets. A quiet spot for deep-space weary travelers. Don't panic, but bring a towel.";
+
+const myCoords = calculateCoordinates(landingSite);
 
 // Cloudflare D1 Integration
-import { env } from 'cloudflare:workers';
 const { DB } = (env as any) || {};
 
 let traffic = [];
@@ -41,27 +63,36 @@ if (DB) {
             WHERE status != 'ARRIVED' 
             AND (origin_url = ? OR destination_url = ?)
             ORDER BY start_timestamp DESC
-        `).bind(manifest.landing_site, manifest.landing_site).all();
+        `).bind(landingSite, landingSite).all();
         
-        traffic = activePlans.map((p: any) => ({
-            id: p.id,
-            type: p.origin_url === manifest.landing_site ? (Date.now() < p.start_timestamp ? 'preparation' : 'outgoing') : 'incoming',
-            ship: p.ship_id,
-            status: p.status,
-            dir: p.origin_url === manifest.landing_site ? 'to' : 'from',
-            planetName: p.origin_url === manifest.landing_site ? new URL(p.destination_url).hostname : new URL(p.origin_url).hostname,
-            url: p.origin_url === manifest.landing_site ? p.destination_url : p.origin_url,
-            time: Date.now() < p.start_timestamp ? `Dep: ${new Date(p.start_timestamp).toLocaleTimeString()}` : `Arr: ${new Date(p.end_timestamp).toLocaleTimeString()}`,
-            coords: calculateCoordinates(p.origin_url === manifest.landing_site ? p.destination_url : p.origin_url),
-            isArrivalReady: Date.now() >= p.end_timestamp && p.destination_url === manifest.landing_site,
-            rawPlan: p // Pass raw plan for landing action
-        }));
+        traffic = (activePlans || []).map((p: any) => {
+            const isOrigin = p.origin_url === landingSite;
+            const targetUrl = isOrigin ? p.destination_url : p.origin_url;
+            const targetHostname = new URL(targetUrl).hostname;
+            const isPreparing = Date.now() < p.start_timestamp;
+            const type = isOrigin ? (isPreparing ? 'preparation' : 'outgoing') : 'incoming';
+            const timeLabel = isPreparing ? `Dep: ${new Date(p.start_timestamp).toLocaleTimeString()}` : `Arr: ${new Date(p.end_timestamp).toLocaleTimeString()}`;
+
+            return {
+                id: p.id,
+                type,
+                ship: p.ship_id,
+                status: p.status,
+                dir: isOrigin ? 'to' : 'from',
+                planetName: targetHostname,
+                url: targetUrl,
+                time: timeLabel,
+                coords: calculateCoordinates(targetUrl),
+                isArrivalReady: Date.now() >= p.end_timestamp && p.destination_url === landingSite,
+                rawPlan: p
+            };
+        });
 
         const { results: archiveRecords } = await DB.prepare(`
             SELECT * FROM mission_archive 
             ORDER BY timestamp DESC LIMIT 10
         `).all();
-        archive = archiveRecords;
+        archive = archiveRecords || [];
     } catch (e) {
         console.error("Database fetch failed.", e);
     }
@@ -81,13 +112,13 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Landing Site - {manifest.name}</title>
+    <title>Landing Site - {planetName}</title>
     <link rel="space-manifest" href="/manifest.json" />
     <link rel="stylesheet" href="/planet.css" />
-    <script is:inline src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+    <script is:inline src="/three.min.js"></script>
     <script is:inline src="/map.js" defer></script>
   </head>
-  <body data-my-x={myCoords.x} data-my-y={myCoords.y} data-my-z={myCoords.z}>
+  <body data-my-x={myCoords.x} data-my-y={myCoords.y} data-my-z={myCoords.z} data-landing-site={landingSite}>
     <div class="planet-container">
       <div class="atmosphere"></div>
       <div class="ring-back"></div>
@@ -95,8 +126,8 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
       <div class="ring"></div>
     </div>
     
-    <h1>{manifest.name}</h1>
-    <p>{manifest.description}</p>
+    <h1>{planetName}</h1>
+    <p>{planetDescription}</p>
     <p>
       Coordinates:
       <code class="coord-display">{myCoords.formatted}</code>
@@ -104,7 +135,6 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
 
     <div class="status-badge">Space Port Active</div>
 
-    <!-- The Flight Deck: Jumping Control -->
     <div id="flight-deck" class="flight-deck hidden">
         <div class="deck-content">
             <h3>Initiate Jump Sequence</h3>
@@ -249,7 +279,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
     </section>
 
     <footer>
-      {manifest.name} is one of the
+      {planetName} is one of the
       <a href="https://federatedplanets.com">Federated Planets</a> terraformed
       with
       <a href="https://github.com/Federated-Planets/planet">Source Codia</a>.
@@ -324,7 +354,6 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
             }
         });
 
-        // Landing Logic
         document.querySelectorAll('.land-btn').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const plan = JSON.parse(btn.dataset.plan);

@@ -1,0 +1,197 @@
+---
+const simName = import.meta.env.PUBLIC_SIM_PLANET_NAME || "Towel 42";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flight Control Center - {simName}</title>
+    <link rel="stylesheet" href="/planet.css" />
+    <style>
+      body {
+        padding: 0.5rem 0 !important;
+      }
+      .control-panel {
+        width: 98%;
+        max-width: 1400px;
+        background: rgba(15, 20, 30, 0.95);
+        border: 1px solid var(--sky-accent);
+        border-radius: 8px;
+        padding: 0.8rem;
+        margin-top: 0;
+        box-shadow: 0 0 40px rgba(74, 144, 226, 0.2);
+        font-family: 'Courier New', Courier, monospace;
+      }
+      .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid rgba(74, 144, 226, 0.3);
+        padding-bottom: 0.4rem;
+        margin-bottom: 0.6rem;
+      }
+      .panel-header h2 {
+        margin: 0;
+        font-size: 0.9rem;
+        letter-spacing: 1px;
+        color: var(--sky-accent);
+      }
+      .connection-status {
+        font-size: 0.7rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #888;
+      }
+      .status-dot.connected {
+        background: #2ecc71;
+        box-shadow: 0 0 10px #2ecc71;
+      }
+      .event-log {
+        height: calc(100vh - 100px);
+        min-height: 400px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        padding-right: 0.5rem;
+      }
+      .event-log::-webkit-scrollbar {
+        width: 4px;
+      }
+      .event-log::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .event-log::-webkit-scrollbar-thumb {
+        background: var(--sky-accent);
+        border-radius: 2px;
+      }
+      .event-entry {
+        background: rgba(255, 255, 255, 0.02);
+        border-left: 2px solid #444;
+        padding: 0.4rem 0.6rem;
+        font-size: 0.75rem;
+        animation: slideIn 0.2s ease-out;
+      }
+      @keyframes slideIn {
+        from { transform: translateX(-5px); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      .event-entry.API_REQUEST { border-left-color: #3498db; }
+      .event-entry.INITIATE_TRAVEL { border-left-color: #f1c40f; }
+      .event-entry.QUORUM_REACHED { border-left-color: #2ecc71; }
+      .event-entry.API_ERROR { border-left-color: #e74c3c; }
+      .event-entry.LANDING_AUTHORIZED { border-left-color: #9b59b6; }
+      
+      .event-time { color: #666; font-size: 0.7rem; margin-right: 0.6rem; }
+      .event-type { font-weight: bold; margin-right: 0.6rem; }
+      .event-planet { color: var(--sky-accent); }
+      .event-data { color: #888; margin-top: 0.1rem; font-size: 0.7rem; }
+      
+      footer {
+        margin-top: 0.5rem !important;
+        padding: 0.5rem !important;
+        font-size: 0.7rem !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="control-panel">
+      <div class="panel-header">
+        <h2>FLIGHT CONTROL: {simName}</h2>
+        <div class="connection-status">
+          <div id="status-dot" class="status-dot"></div>
+          <span id="status-text">DISCONNECTED</span>
+        </div>
+      </div>
+
+      <div id="event-log" class="event-log">
+        <div class="event-entry">System ready. Waiting for sector events...</div>
+      </div>
+    </div>
+
+    <footer>
+        Federated Planets | Concentric v1.0
+    </footer>
+
+    <script is:inline>
+      const logContainer = document.getElementById('event-log');
+      const statusDot = document.getElementById('status-dot');
+      const statusText = document.getElementById('status-text');
+
+      function addEvent(event) {
+        const entry = document.createElement('div');
+        entry.className = `event-entry ${event.type || ''}`;
+        
+        const time = new Date(event.timestamp || Date.now()).toLocaleTimeString();
+        
+        let dataHtml = '';
+        if (event.action) dataHtml += `<span>Action: ${event.action}</span> `;
+        if (event.ship_id) dataHtml += `<span>Ship: ${event.ship_id}</span> `;
+        if (event.destination) dataHtml += `<span>Dest: ${event.destination}</span> `;
+        if (event.error) dataHtml += `<span style="color: #e74c3c">Error: ${event.error}</span> `;
+
+        entry.innerHTML = `
+          <div class="event-meta">
+            <span class="event-time">[${time}]</span>
+            <span class="event-type">${event.type || 'EVENT'}</span>
+            <span class="event-planet">@${event.planet || 'Unknown'}</span>
+          </div>
+          <div class="event-data">${dataHtml}</div>
+        `;
+
+        logContainer.prepend(entry);
+        
+        // Keep max 100 entries in DOM
+        if (logContainer.children.length > 100) {
+          logContainer.removeChild(logContainer.lastChild);
+        }
+      }
+
+      function connect() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/api/v1/control-ws`;
+        
+        console.log('Connecting to', wsUrl);
+        const socket = new WebSocket(wsUrl);
+
+        socket.onopen = () => {
+          statusDot.classList.add('connected');
+          statusText.textContent = 'CONNECTED';
+          console.log('WebSocket Connected');
+        };
+
+        socket.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'history') {
+            logContainer.innerHTML = ''; // Clear initial message
+            data.data.forEach(addEvent);
+          } else {
+            addEvent(data);
+          }
+        };
+
+        socket.onclose = () => {
+          statusDot.classList.remove('connected');
+          statusText.textContent = 'RECONNECTING...';
+          console.log('WebSocket Closed. Reconnecting in 3s...');
+          setTimeout(connect, 3000);
+        };
+
+        socket.onerror = (error) => {
+          console.error('WebSocket Error:', error);
+        };
+      }
+
+      connect();
+    </script>
+  </body>
+</html>
