@@ -68,20 +68,22 @@ async function broadcastEvent(TRAFFIC_CONTROL: DurableObjectNamespace, event: an
     console.warn(`[broadcastEvent] Failed to initiate broadcast: ${e.message}`);
   }
 }
-
 export const POST: APIRoute = async ({ request }) => {
   const { KV, DB, TRAFFIC_CONTROL } = (env as any);
   const url = new URL(request.url);
   const action = url.searchParams.get('action');
+  const senderOrigin = request.headers.get('X-Planet-Origin') || 'Browser/Unknown';
 
   const localPlanet = getLocalPlanetInfo(request.url);
 
-  console.log(`[${localPlanet.name}] Received ${request.method} request for action: ${action}`);
+  console.log(`[${localPlanet.name}] Received ${request.method} request for action: ${action} from ${senderOrigin}`);
 
   try {
+    // Broadcast incoming request event
     await broadcastEvent(TRAFFIC_CONTROL, {
         type: 'API_REQUEST',
         planet: localPlanet.name,
+        from: senderOrigin,
         action,
         method: request.method
     });
@@ -262,38 +264,48 @@ async function handleCommit(request: Request, KV: KVNamespace, DB: D1Database, l
   existing.signatures = { ...existing.signatures, ...incomingPlan.signatures };
   await ConsensusEngine.savePlanState(KV, existing);
 
-  if (ConsensusEngine.hasQuorum(existing)) {
-      console.log(`[${localPlanet.name}] Quorum reached for plan ${existing.id}. Archiving mission.`);
-      await broadcastEvent(TRAFFIC_CONTROL, {
-          type: 'QUORUM_REACHED',
-          planet: localPlanet.name,
-          ship_id: existing.ship_id,
-          plan_id: existing.id
-      });
-      await DB.prepare(`
-          INSERT OR IGNORE INTO travel_plans (id, ship_id, origin_url, destination_url, start_timestamp, end_timestamp, status, signatures)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-          existing.id,
-          existing.ship_id,
-          existing.origin_url,
-          existing.destination_url,
-          existing.start_timestamp,
-          existing.end_timestamp,
-          existing.status,
-          JSON.stringify(existing.signatures)
-      ).run();
+  if (ConsensusEngine.hasQuorum(existing) && existing.status === 'PREPARING') {
+      // Check if we already archived it to prevent race condition across TCs
+      const alreadyArchived = await DB.prepare(`SELECT id FROM travel_plans WHERE id = ?`).bind(existing.id).first();
+      
+      if (!alreadyArchived) {
+          console.log(`[${localPlanet.name}] Quorum reached for plan ${existing.id}. Archiving mission.`);
+          
+          existing.status = 'TRANSIT';
+          await ConsensusEngine.savePlanState(KV, existing);
 
-      await DB.prepare(`
-          INSERT INTO mission_archive (ship_id, event, location_name, location_url, timestamp)
-          VALUES (?, ?, ?, ?, ?)
-      `).bind(
-          existing.ship_id,
-          'DEPARTED',
-          new URL(existing.destination_url).hostname,
-          existing.destination_url,
-          Date.now()
-      ).run();
+          await broadcastEvent(TRAFFIC_CONTROL, {
+              type: 'QUORUM_REACHED',
+              planet: localPlanet.name,
+              ship_id: existing.ship_id,
+              plan_id: existing.id
+          });
+          
+          await DB.prepare(`
+              INSERT OR IGNORE INTO travel_plans (id, ship_id, origin_url, destination_url, start_timestamp, end_timestamp, status, signatures)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+              existing.id,
+              existing.ship_id,
+              existing.origin_url,
+              existing.destination_url,
+              existing.start_timestamp,
+              existing.end_timestamp,
+              existing.status,
+              JSON.stringify(existing.signatures)
+          ).run();
+
+          await DB.prepare(`
+              INSERT INTO mission_archive (ship_id, event, location_name, location_url, timestamp)
+              VALUES (?, ?, ?, ?, ?)
+          `).bind(
+              existing.ship_id,
+              'DEPARTED',
+              new URL(existing.destination_url).hostname,
+              existing.destination_url,
+              Date.now()
+          ).run();
+      }
   }
 
   return new Response(JSON.stringify({ success: true }), { status: 200 });

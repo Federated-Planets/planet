@@ -7,7 +7,9 @@ const BASE_INSPECTOR_PORT = 29229;
 
 const allPlanets = Array.from({ length: NUM_PLANETS }, (_, i) => ({
     name: `Towel ${i + 1}`,
-    url: `http://localhost:${BASE_PORT + i}`
+    url: `http://towel-${i + 1}.localhost:${BASE_PORT + i}`,
+    port: BASE_PORT + i,
+    id: i + 1
 }));
 
 const processes = [];
@@ -22,12 +24,16 @@ const cleanup = () => {
     } catch (e) {}
 };
 
-const startPlanet = (index) => {
-    const id = index + 1;
-    const name = `Towel ${id}`;
-    const url = `http://localhost:${BASE_PORT + index}`;
-    const port = BASE_PORT + index;
-    const inspectorPort = BASE_INSPECTOR_PORT + index;
+const startPlanet = (planet) => {
+    const { id, name, url, port } = planet;
+    const inspectorPort = BASE_INSPECTOR_PORT + id;
+
+    // Initialize Database first
+    console.log(`[${name}] Initializing database...`);
+    execSync(`npx wrangler d1 execute planet_db --file=schema.sql -c wrangler.dev.jsonc --local --persist-to=.wrangler/state/test-planet-${id}`, {
+        cwd: path.join(__dirname, '..'),
+        stdio: 'inherit'
+    });
 
     const env = {
         ...process.env,
@@ -45,18 +51,40 @@ const startPlanet = (index) => {
         '--port', port,
         '--inspector-port', inspectorPort,
         '-c', 'wrangler.dev.jsonc',
+        '--persist-to', `.wrangler/state/test-planet-${id}`,
         '--var', `PUBLIC_SIM_PLANET_NAME:"${name}"`,
         '--var', `PUBLIC_SIM_LANDING_SITE:"${url}"`,
         '--var', `PUBLIC_SIM_WARP_LINKS:'${JSON.stringify(allPlanets.filter(p => p.url !== url).map(n => ({ name: n.name, url: n.url })))}'`
     ], {
         cwd: path.join(__dirname, '..'),
         env: process.env,
-        stdio: 'pipe',
+        stdio: ['ignore', 'pipe', 'pipe'],
         shell: true
     });
 
     processes.push(child);
-    return child;
+
+    // Pipe output to our stdout but also listen for "Ready"
+    return new Promise((resolve, reject) => {
+        let isReady = false;
+        const timeout = setTimeout(() => {
+            if (!isReady) reject(new Error(`[${name}] Timed out waiting for readiness`));
+        }, 30000);
+
+        const handleData = (data) => {
+            const str = data.toString();
+            process.stdout.write(`[${name}] ${str}`);
+            if (str.includes("Ready on")) {
+                isReady = true;
+                clearTimeout(timeout);
+                resolve();
+            }
+        };
+
+        child.stdout.on('data', handleData);
+        child.stderr.on('data', handleData);
+        child.on('error', reject);
+    });
 };
 
 const runTest = async () => {
@@ -65,14 +93,10 @@ const runTest = async () => {
         execSync("npm run build", { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
 
         console.log(`Starting ${NUM_PLANETS} planets...`);
-        for (let i = 0; i < NUM_PLANETS; i++) {
-            startPlanet(i);
-        }
+        const startupPromises = allPlanets.map(p => startPlanet(p));
+        await Promise.all(startupPromises);
 
-        console.log("Waiting for planets to initialize (30s)...");
-        await new Promise(r => setTimeout(r, 30000));
-
-        console.log("Initiating jump from Towel 1 to Towel 2...");
+        console.log("All planets are ready. Initiating jump from Towel 1 to Towel 2...");
         const response = await fetch(`${allPlanets[0].url}/api/v1/port?action=initiate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -96,7 +120,6 @@ const runTest = async () => {
         for (let attempt = 0; attempt < 20; attempt++) {
             await new Promise(r => setTimeout(r, 2000));
             
-            // Check Towel 1's events
             const eventsRes = await fetch(`${allPlanets[0].url}/api/v1/control-ws`);
             if (eventsRes.ok) {
                 const events = await eventsRes.json();
@@ -113,7 +136,7 @@ const runTest = async () => {
                     break;
                 }
             }
-            console.log(`Waiting... (attempt ${attempt + 1}/20)`);
+            console.log(`Waiting for quorum... (attempt ${attempt + 1}/20)`);
         }
 
         if (!quorumReached) {

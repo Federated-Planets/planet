@@ -143,6 +143,7 @@ const simName = import.meta.env.PUBLIC_SIM_PLANET_NAME || "Towel 42";
             <span class="event-time">[${time}]</span>
             <span class="event-type">${event.type || 'EVENT'}</span>
             <span class="event-planet">@${event.planet || 'Unknown'}</span>
+            ${event.from ? `<span class="event-from" style="color: #888; font-size: 0.7rem; margin-left: 0.5rem;">FROM: ${event.from}</span>` : ''}
           </div>
           <div class="event-data">${dataHtml}</div>
         `;
