@@ -1,4 +1,8 @@
 export const DEFAULT_WARP_LINKS = [
+  {
+    name: "Federation Prime",
+    url: "https://prime.federatedplanets.com/",
+  },
   { name: "Aether Reach", url: "https://aether.reach.io" },
   { name: "Iron Star Forge", url: "https://ironstar.forge" },
   { name: "Neon Nebula", url: "https://neon.nebula.web" },

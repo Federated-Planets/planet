@@ -256,8 +256,21 @@ async function handleInitiate(
   const startTimestamp = data.departure_timestamp + departureBuffer();
   const endTimestamp = startTimestamp + travelTimeHours * msPerFY();
 
-  const discoveryPromises = WARP_LINKS.map((l) => discoverSpacePort(l.url, DB));
-  const discoveredNeighbors = (await Promise.all(discoveryPromises)).filter(
+  const discoveryPromises = [
+    discoverSpacePort(data.destination_url, DB),
+    ...WARP_LINKS.map((l) => discoverSpacePort(l.url, DB)),
+  ];
+  const [destManifest, ...neighborResults] =
+    await Promise.all(discoveryPromises);
+
+  if (!destManifest) {
+    return new Response(
+      JSON.stringify({ error: "no_destination_space_port" }),
+      { status: 422 },
+    );
+  }
+
+  const discoveredNeighbors = neighborResults.filter(
     (n): n is PlanetManifest => n !== null,
   );
 
@@ -271,6 +284,19 @@ async function handleInitiate(
       landing_site: localPlanet.landing_site,
       space_port: localPlanet.space_port,
     });
+  }
+
+  // Require at least 4 controllers (3f+1 where f≥1) for meaningful fault tolerance
+  const MIN_CONTROLLERS = 4;
+  if (discoveredNeighbors.length < MIN_CONTROLLERS) {
+    return new Response(
+      JSON.stringify({
+        error: "insufficient_controllers",
+        found: discoveredNeighbors.length,
+        required: MIN_CONTROLLERS,
+      }),
+      { status: 422 },
+    );
   }
 
   const seed = `${myCoords.x}${myCoords.y}${myCoords.z}${destCoords.x}${destCoords.y}${destCoords.z}${data.departure_timestamp}`;
