@@ -91,6 +91,29 @@ async function broadcastEvent(
     console.warn(`[broadcastEvent] Failed to initiate broadcast: ${e.message}`);
   }
 }
+export const GET: APIRoute = async ({ request }) => {
+  const { DB } = env as any;
+  const url = new URL(request.url);
+  const action = url.searchParams.get("action");
+
+  if (action === "check") {
+    const targetUrl = url.searchParams.get("url");
+    if (!targetUrl) {
+      return new Response(JSON.stringify({ error: "Missing url parameter" }), {
+        status: 400,
+      });
+    }
+    const manifest = await discoverSpacePort(targetUrl, DB);
+    return new Response(JSON.stringify({ has_space_port: manifest !== null }), {
+      status: 200,
+    });
+  }
+
+  return new Response(JSON.stringify({ error: "Invalid action" }), {
+    status: 400,
+  });
+};
+
 export const POST: APIRoute = async ({ request }) => {
   const { KV, DB, TRAFFIC_CONTROL } = env as any;
   const url = new URL(request.url);

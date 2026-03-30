@@ -178,7 +178,40 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
     <div class="status-badge">Space Port Active</div>
 
     <div id="flight-deck" class="flight-deck hidden">
-      <div class="deck-content">
+      <div id="deck-checking" class="deck-content hidden">
+        <p style="text-align: center; color: var(--warp-text-dim);">
+          Scanning for space port&hellip;
+        </p>
+      </div>
+
+      <div id="deck-no-port" class="deck-content hidden">
+        <h3>No Space Port Detected</h3>
+        <div class="target-info">
+          <span class="label">Destination:</span>
+          <span id="no-port-target-name" class="value">---</span>
+        </div>
+        <div class="target-coords">
+          <span class="label">Coordinates:</span>
+          <code id="no-port-target-coords" class="value">---</code>
+        </div>
+        <p style="margin: 1rem 0 0.5rem;">
+          This planet does not have an active space port. Jump travel requires a
+          functioning space port at the destination to safely receive your
+          vessel.
+        </p>
+        <p
+          style="margin: 0 0 1rem; color: var(--warp-text-dim); font-size: 0.85rem;"
+        >
+          Only planets that are part of the
+          <a
+            href="https://federatedplanets.com"
+            style="color: var(--warp-accent);">Federated Planets</a
+          > network and running an active space port can accept jump arrivals.
+        </p>
+        <button id="no-port-cancel" class="cancel-button">DISMISS</button>
+      </div>
+
+      <div id="deck-jump" class="deck-content hidden">
         <h3>Initiate Jump Sequence</h3>
         <div class="target-info">
           <span class="label">Destination:</span>
@@ -468,13 +501,29 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         return `${name}${suffix}`;
       };
 
+      const deckChecking = document.getElementById("deck-checking");
+      const deckNoPort = document.getElementById("deck-no-port");
+      const deckJump = document.getElementById("deck-jump");
+
+      const showDeckPanel = (panel) => {
+        for (const p of [deckChecking, deckNoPort, deckJump]) {
+          p.classList.add("hidden");
+        }
+        panel.classList.remove("hidden");
+      };
+
+      const closeDeck = () => {
+        flightDeck.classList.add("hidden");
+        window.dispatchEvent(new CustomEvent("clearSelection"));
+      };
+
+      document
+        .getElementById("no-port-cancel")
+        .addEventListener("click", closeDeck);
+
       window.addEventListener("planetSelected", (e) => {
         const data = e.detail;
         currentTarget = data;
-
-        targetName.textContent = data.name;
-        targetCoords.textContent = data.formatted;
-        shipNameInput.value = generateShipSuggestion();
 
         const dx = data.x - myX;
         const dy = data.y - myY;
@@ -482,16 +531,37 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         const time = distance / 100;
 
-        jumpDistance.textContent = distance.toFixed(2);
-        jumpTime.textContent = time.toFixed(2);
-
+        showDeckPanel(deckChecking);
         flightDeck.classList.remove("hidden");
+
+        requestAnimationFrame(async () => {
+          let hasPort = false;
+          try {
+            const res = await fetch(
+              "/api/v1/port?action=check&url=" + encodeURIComponent(data.url),
+            );
+            const json = await res.json();
+            hasPort = json.has_space_port === true;
+          } catch (_) {}
+
+          if (hasPort) {
+            targetName.textContent = data.name;
+            targetCoords.textContent = data.formatted;
+            shipNameInput.value = generateShipSuggestion();
+            jumpDistance.textContent = distance.toFixed(2);
+            jumpTime.textContent = time.toFixed(2);
+            showDeckPanel(deckJump);
+          } else {
+            document.getElementById("no-port-target-name").textContent =
+              data.name;
+            document.getElementById("no-port-target-coords").textContent =
+              data.formatted;
+            showDeckPanel(deckNoPort);
+          }
+        });
       });
 
-      cancelBtn.addEventListener("click", () => {
-        flightDeck.classList.add("hidden");
-        window.dispatchEvent(new CustomEvent("clearSelection"));
-      });
+      cancelBtn.addEventListener("click", closeDeck);
 
       const archiveTable = document.getElementById("archive-table");
       const archiveTbody = document.getElementById("archive-tbody");

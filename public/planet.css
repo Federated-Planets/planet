@@ -649,6 +649,10 @@ tr.status-transit .eta-bar-fill {
   pointer-events: none;
 }
 
+.deck-content.hidden {
+  display: none;
+}
+
 .deck-content h3 {
   margin-top: 0;
   font-size: 0.9rem;
