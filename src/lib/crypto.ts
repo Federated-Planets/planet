@@ -12,11 +12,10 @@ export class CryptoCore {
    * Generates a new Ed25519 KeyPair
    */
   static async generateKeyPair(): Promise<CryptoKeyPair> {
-    return (await crypto.subtle.generateKey(
-      this.KEY_ALGO,
-      true,
-      ["sign", "verify"]
-    )) as CryptoKeyPair;
+    return (await crypto.subtle.generateKey(this.KEY_ALGO, true, [
+      "sign",
+      "verify",
+    ])) as CryptoKeyPair;
   }
 
   /**
@@ -25,7 +24,7 @@ export class CryptoCore {
   static async exportKey(key: CryptoKey): Promise<string> {
     const exported = await crypto.subtle.exportKey(
       key.type === "public" ? "spki" : "pkcs8",
-      key
+      key,
     );
     return btoa(String.fromCharCode(...new Uint8Array(exported)));
   }
@@ -33,7 +32,10 @@ export class CryptoCore {
   /**
    * Imports a key from Base64 format
    */
-  static async importKey(base64Key: string, type: "public" | "private"): Promise<CryptoKey> {
+  static async importKey(
+    base64Key: string,
+    type: "public" | "private",
+  ): Promise<CryptoKey> {
     const binary = atob(base64Key);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
@@ -45,7 +47,7 @@ export class CryptoCore {
       bytes,
       this.KEY_ALGO,
       true,
-      type === "public" ? ["verify"] : ["sign"]
+      type === "public" ? ["verify"] : ["sign"],
     );
   }
 
@@ -57,7 +59,7 @@ export class CryptoCore {
     const signature = await crypto.subtle.sign(
       this.KEY_ALGO,
       privateKey,
-      encoder.encode(data)
+      encoder.encode(data),
     );
     return btoa(String.fromCharCode(...new Uint8Array(signature)));
   }
@@ -65,7 +67,11 @@ export class CryptoCore {
   /**
    * Verifies signature for data string using a public key
    */
-  static async verify(data: string, signatureBase64: string, publicKey: CryptoKey): Promise<boolean> {
+  static async verify(
+    data: string,
+    signatureBase64: string,
+    publicKey: CryptoKey,
+  ): Promise<boolean> {
     const encoder = new TextEncoder();
     const signatureBinary = atob(signatureBase64);
     const signatureBytes = new Uint8Array(signatureBinary.length);
@@ -77,7 +83,7 @@ export class CryptoCore {
       this.KEY_ALGO,
       publicKey,
       signatureBytes,
-      encoder.encode(data)
+      encoder.encode(data),
     );
   }
 }

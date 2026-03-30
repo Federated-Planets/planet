@@ -5,11 +5,15 @@ const shipPoints = [];
 let selectedId = null;
 
 const initThree = () => {
-  const container = document.getElementById('three-container');
+  const container = document.getElementById("three-container");
   if (!container) return;
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--map-bg').trim() || '#0b0e14');
+  scene.background = new THREE.Color(
+    getComputedStyle(document.documentElement)
+      .getPropertyValue("--map-bg")
+      .trim() || "#0b0e14",
+  );
 
   const width = container.clientWidth;
   const height = container.clientHeight;
@@ -36,26 +40,26 @@ const initThree = () => {
   planetsGroup.add(myPlanet);
 
   const pulseGeo = new THREE.SphereGeometry(20, 32, 32);
-  const pulseMat = new THREE.MeshBasicMaterial({ 
+  const pulseMat = new THREE.MeshBasicMaterial({
     color: 0x2ecc71,
     transparent: true,
-    opacity: 0.4
+    opacity: 0.4,
   });
   const pulse = new THREE.Mesh(pulseGeo, pulseMat);
   myPlanet.add(pulse);
   myPlanet.userData.pulse = pulse;
 
-  document.querySelectorAll('.warp-links a').forEach(link => {
+  document.querySelectorAll(".warp-links a").forEach((link) => {
     const x = parseFloat(link.dataset.x) - 500;
     const y = parseFloat(link.dataset.y) - 500;
     const z = parseFloat(link.dataset.z) - 500;
     const id = link.dataset.id;
 
     const neighborGeo = new THREE.SphereGeometry(8, 16, 16);
-    const neighborMat = new THREE.MeshBasicMaterial({ 
+    const neighborMat = new THREE.MeshBasicMaterial({
       color: 0x4a90e2,
       transparent: true,
-      opacity: 0.6
+      opacity: 0.6,
     });
     const neighbor = new THREE.Mesh(neighborGeo, neighborMat);
     neighbor.position.set(x, y, z);
@@ -65,7 +69,7 @@ const initThree = () => {
 
     const points = [
       new THREE.Vector3(myX, myY, myZ),
-      new THREE.Vector3(x, y, z)
+      new THREE.Vector3(x, y, z),
     ];
     const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
     const lineMat = new THREE.LineDashedMaterial({
@@ -83,35 +87,47 @@ const initThree = () => {
   });
 
   // Add Active Ships from Traffic
-  const shipsData = JSON.parse(container.dataset.ships || '[]');
-  shipsData.forEach(ship => {
-      const ox = ship.originCoords.x - 500;
-      const oy = ship.originCoords.y - 500;
-      const oz = ship.originCoords.z - 500;
-      const dx = ship.destCoords.x - 500;
-      const dy = ship.destCoords.y - 500;
-      const dz = ship.destCoords.z - 500;
+  const shipsData = JSON.parse(container.dataset.ships || "[]");
+  shipsData.forEach((ship) => {
+    const ox = ship.originCoords.x - 500;
+    const oy = ship.originCoords.y - 500;
+    const oz = ship.originCoords.z - 500;
+    const dx = ship.destCoords.x - 500;
+    const dy = ship.destCoords.y - 500;
+    const dz = ship.destCoords.z - 500;
 
-      // Travel line
-      const linePoints = [new THREE.Vector3(ox, oy, oz), new THREE.Vector3(dx, dy, dz)];
-      const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x4fc3f7, transparent: true, opacity: 0.7 });
-      const travelLine = new THREE.Line(lineGeo, lineMat);
-      planetsGroup.add(travelLine);
+    // Travel line
+    const linePoints = [
+      new THREE.Vector3(ox, oy, oz),
+      new THREE.Vector3(dx, dy, dz),
+    ];
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0x4fc3f7,
+      transparent: true,
+      opacity: 0.7,
+    });
+    const travelLine = new THREE.Line(lineGeo, lineMat);
+    planetsGroup.add(travelLine);
 
-      // Ship mesh
-      const shipGeo = new THREE.TetrahedronGeometry(10);
-      const shipMat = new THREE.MeshBasicMaterial({ color: 0xf1c40f });
-      const shipMesh = new THREE.Mesh(shipGeo, shipMat);
+    // Ship mesh
+    const shipGeo = new THREE.TetrahedronGeometry(10);
+    const shipMat = new THREE.MeshBasicMaterial({ color: 0xf1c40f });
+    const shipMesh = new THREE.Mesh(shipGeo, shipMat);
 
-      shipMesh.userData = {
-          start: ship.rawPlan.start_timestamp,
-          end: ship.rawPlan.end_timestamp,
-          ox, oy, oz, dx, dy, dz
-      };
+    shipMesh.userData = {
+      start: ship.rawPlan.start_timestamp,
+      end: ship.rawPlan.end_timestamp,
+      ox,
+      oy,
+      oz,
+      dx,
+      dy,
+      dz,
+    };
 
-      planetsGroup.add(shipMesh);
-      shipPoints.push(shipMesh);
+    planetsGroup.add(shipMesh);
+    shipPoints.push(shipMesh);
   });
 
   const animate = () => {
@@ -129,17 +145,17 @@ const initThree = () => {
     // Dynamic Ship Positioning (Lerp between origin and destination)
     const now = Date.now();
     shipPoints.forEach((s, i) => {
-        const { start, end, ox, oy, oz, dx, dy, dz } = s.userData;
+      const { start, end, ox, oy, oz, dx, dy, dz } = s.userData;
 
-        let p = (now - start) / (end - start);
-        p = Math.max(0, Math.min(1, p));
+      let p = (now - start) / (end - start);
+      p = Math.max(0, Math.min(1, p));
 
-        s.position.set(
-            ox + (dx - ox) * p,
-            oy + (dy - oy) * p,
-            oz + (dz - oz) * p
-        );
-        s.rotation.y += 0.05;
+      s.position.set(
+        ox + (dx - ox) * p,
+        oy + (dy - oy) * p,
+        oz + (dz - oz) * p,
+      );
+      s.rotation.y += 0.05;
     });
 
     renderer.render(scene, camera);
@@ -147,7 +163,7 @@ const initThree = () => {
 
   animate();
 
-  window.addEventListener('resize', () => {
+  window.addEventListener("resize", () => {
     const width = container.clientWidth;
     const height = container.clientHeight;
     renderer.setSize(width, height);
@@ -165,12 +181,12 @@ const updateHighlight = (id, isActive) => {
 
   const link = document.querySelector(`.warp-links a[data-id="${id}"]`);
   if (link) {
-    const li = link.closest('li');
+    const li = link.closest("li");
     if (isActive) li.classList.add("active");
     else li.classList.remove("active");
   }
 
-  planetPoints.forEach(obj => {
+  planetPoints.forEach((obj) => {
     if (obj.userData.id === id) {
       if (obj.isMesh) {
         obj.material.opacity = isActive ? 1 : 0.6;
@@ -186,7 +202,7 @@ const updateHighlight = (id, isActive) => {
 const handleHover = (e) => {
   const item = e.target.closest(".warp-links li");
   if (!item) return;
-  const link = item.querySelector('a');
+  const link = item.querySelector("a");
   if (!link) return;
   const id = link.dataset.id;
   const isEnter = e.type === "mouseover" || e.type === "mouseenter";
@@ -202,7 +218,7 @@ const handleHover = (e) => {
 const handleClick = (e) => {
   const item = e.target.closest(".warp-links li");
   if (!item) return;
-  const link = item.querySelector('a');
+  const link = item.querySelector("a");
   if (!link) return;
   const id = link.dataset.id;
   if (e.target === link) return;
@@ -210,17 +226,19 @@ const handleClick = (e) => {
   if (selectedId && selectedId !== id) updateHighlight(selectedId, false);
   selectedId = id;
   updateHighlight(selectedId, true);
-  window.dispatchEvent(new CustomEvent('planetSelected', {
-    detail: {
+  window.dispatchEvent(
+    new CustomEvent("planetSelected", {
+      detail: {
         id: id,
         name: link.dataset.name,
         url: link.href,
         x: parseFloat(link.dataset.x),
         y: parseFloat(link.dataset.y),
         z: parseFloat(link.dataset.z),
-        formatted: link.dataset.formatted
-    }
-  }));
+        formatted: link.dataset.formatted,
+      },
+    }),
+  );
 };
 
 const initMap = () => {
@@ -231,10 +249,10 @@ const initMap = () => {
     warpRing.addEventListener("mouseout", handleHover);
     warpRing.addEventListener("click", handleClick);
   }
-  window.addEventListener('clearSelection', () => {
+  window.addEventListener("clearSelection", () => {
     if (selectedId) {
-        updateHighlight(selectedId, false);
-        selectedId = null;
+      updateHighlight(selectedId, false);
+      selectedId = null;
     }
   });
 };

@@ -1,10 +1,16 @@
-import { CryptoCore } from './crypto';
+import { CryptoCore } from "./crypto";
 
 export class PlanetIdentity {
   /**
    * Retrieves or generates the planet's Ed25519 identity keys from KV.
    */
-  static async getIdentity(KV: KVNamespace): Promise<{ publicKey: CryptoKey; privateKey: CryptoKey; publicKeyBase64: string }> {
+  static async getIdentity(
+    KV: KVNamespace,
+  ): Promise<{
+    publicKey: CryptoKey;
+    privateKey: CryptoKey;
+    publicKeyBase64: string;
+  }> {
     const existingPublic = await KV.get("identity_public");
     const existingPrivate = await KV.get("identity_private");
 
@@ -22,10 +28,10 @@ export class PlanetIdentity {
     await KV.put("identity_public", publicB64);
     await KV.put("identity_private", privateB64);
 
-    return { 
-      publicKey: keyPair.publicKey, 
-      privateKey: keyPair.privateKey, 
-      publicKeyBase64: publicB64 
+    return {
+      publicKey: keyPair.publicKey,
+      privateKey: keyPair.privateKey,
+      publicKeyBase64: publicB64,
     };
   }
 }

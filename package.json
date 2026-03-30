@@ -6,6 +6,7 @@
     "dev": "npm run build && wrangler dev -c wrangler.dev.jsonc",
     "dev:db:init": "wrangler d1 execute planet_db --file=schema.sql --local -c wrangler.dev.jsonc",
     "dev:clean": "rm -rf .wrangler/state",
+    "format": "prettier --write .",
     "build": "astro build",
     "postbuild": "node scripts/inject-do-exports.js",
     "preview": "wrangler preview",
@@ -28,6 +29,8 @@
     "@astrojs/check": "^0.9.8",
     "@types/md5": "^2.3.6",
     "miniflare": "^4.20260317.3",
+    "prettier": "^3.8.1",
+    "prettier-plugin-astro": "^0.14.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.2",
     "wrangler": "^4.78.0"

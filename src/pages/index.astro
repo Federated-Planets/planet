@@ -1,56 +1,64 @@
 ---
-import md5 from 'md5';
-import { env } from 'cloudflare:workers';
-import { WARP_LINKS } from '../lib/config';
+import md5 from "md5";
+import { env } from "cloudflare:workers";
+import { WARP_LINKS } from "../lib/config";
 
-const formatCoord = (n: number) => n.toFixed(2).padStart(6, '0');
+const formatCoord = (n: number) => n.toFixed(2).padStart(6, "0");
 
 // Robust helper to get simulation variables from any available environment source
 const getSimVar = (name: string): string | undefined => {
-    // 1. Check Cloudflare env object (for wrangler dev --var)
-    if (env && (env as any)[name]) return (env as any)[name];
-    
-    // 2. Check process.env (traditional node/dev env)
-    if (typeof process !== 'undefined' && process.env && (process.env as any)[name]) return (process.env as any)[name];
-    
-    // 3. Check import.meta.env (build-time or astro-provided)
-    if (import.meta.env && (import.meta.env as any)[name]) return (import.meta.env as any)[name];
-    
-    return undefined;
+  // 1. Check Cloudflare env object (for wrangler dev --var)
+  if (env && (env as any)[name]) return (env as any)[name];
+
+  // 2. Check process.env (traditional node/dev env)
+  if (
+    typeof process !== "undefined" &&
+    process.env &&
+    (process.env as any)[name]
+  )
+    return (process.env as any)[name];
+
+  // 3. Check import.meta.env (build-time or astro-provided)
+  if (import.meta.env && (import.meta.env as any)[name])
+    return (import.meta.env as any)[name];
+
+  return undefined;
 };
 
 const calculateCoordinates = (url: string) => {
   const domain = new URL(url).hostname.toLowerCase();
   const hash = md5(domain);
-  
+
   const xHex = hash.slice(0, 6);
   const yHex = hash.slice(6, 12);
   const zHex = hash.slice(12, 18);
-  
+
   const xCoord = (parseInt(xHex, 16) % 100000) / 100;
   const yCoord = (parseInt(yHex, 16) % 100000) / 100;
   const zCoord = (parseInt(zHex, 16) % 100000) / 100;
-  
+
   return {
     x: xCoord,
     y: yCoord,
     z: zCoord,
-    formatted: `${formatCoord(xCoord)}:${formatCoord(yCoord)}:${formatCoord(zCoord)}`
+    formatted: `${formatCoord(xCoord)}:${formatCoord(yCoord)}:${formatCoord(zCoord)}`,
   };
 };
 
 // Simulation Overrides
-const simName = getSimVar('PUBLIC_SIM_PLANET_NAME');
-const simUrl = getSimVar('PUBLIC_SIM_LANDING_SITE');
+const simName = getSimVar("PUBLIC_SIM_PLANET_NAME");
+const simUrl = getSimVar("PUBLIC_SIM_LANDING_SITE");
 
 const planetName = simName || "Towel 42 Space Outpost";
 const landingSite = simUrl || Astro.url.origin;
 
-const planetDescription = "A remote outpost in the Federated Planets. A quiet spot for deep-space weary travelers. Don't panic, but bring a towel.";
+const planetDescription =
+  "A remote outpost in the Federated Planets. A quiet spot for deep-space weary travelers. Don't panic, but bring a towel.";
 
 const myCoords = calculateCoordinates(landingSite);
 
-const departureBuffer = parseInt(getSimVar('DEPARTURE_BUFFER_MS') || '') || 30 * 1000;
+const departureBuffer =
+  parseInt(getSimVar("DEPARTURE_BUFFER_MS") || "") || 30 * 1000;
 
 // Cloudflare D1 Integration
 const { DB } = (env as any) || {};
@@ -59,62 +67,79 @@ let traffic = [];
 let archive = [];
 
 if (DB) {
-    try {
-        const now = Date.now();
+  try {
+    const now = Date.now();
 
-        const { results: activePlans } = await DB.prepare(`
+    const { results: activePlans } = await DB.prepare(
+      `
             SELECT * FROM travel_plans
             WHERE end_timestamp > ? AND (origin_url = ? OR destination_url = ?)
             ORDER BY start_timestamp ASC
-        `).bind(now, landingSite, landingSite).all();
+        `,
+    )
+      .bind(now, landingSite, landingSite)
+      .all();
 
-        traffic = (activePlans || []).map((p: any) => {
-            const isOrigin = p.origin_url === landingSite;
-            const targetUrl = isOrigin ? p.destination_url : p.origin_url;
-            const targetHostname = new URL(targetUrl).hostname;
-            const isPreparing = now < p.start_timestamp;
-            const type = isOrigin ? (isPreparing ? 'preparation' : 'outgoing') : 'incoming';
-            const timeLabel = isPreparing ? `Dep: ${new Date(p.start_timestamp).toLocaleTimeString()}` : `Arr: ${new Date(p.end_timestamp).toLocaleTimeString()}`;
+    traffic = (activePlans || []).map((p: any) => {
+      const isOrigin = p.origin_url === landingSite;
+      const targetUrl = isOrigin ? p.destination_url : p.origin_url;
+      const targetHostname = new URL(targetUrl).hostname;
+      const isPreparing = now < p.start_timestamp;
+      const type = isOrigin
+        ? isPreparing
+          ? "preparation"
+          : "outgoing"
+        : "incoming";
+      const timeLabel = isPreparing
+        ? `Dep: ${new Date(p.start_timestamp).toLocaleTimeString()}`
+        : `Arr: ${new Date(p.end_timestamp).toLocaleTimeString()}`;
 
-            return {
-                id: p.id,
-                type,
-                ship: p.ship_id,
-                status: p.status,
-                dir: isOrigin ? 'to' : 'from',
-                planetName: targetHostname,
-                url: targetUrl,
-                time: timeLabel,
-                coords: calculateCoordinates(targetUrl),
-                originCoords: calculateCoordinates(p.origin_url),
-                destCoords: calculateCoordinates(p.destination_url),
-                rawPlan: p
-            };
-        });
+      return {
+        id: p.id,
+        type,
+        ship: p.ship_id,
+        status: p.status,
+        dir: isOrigin ? "to" : "from",
+        planetName: targetHostname,
+        url: targetUrl,
+        time: timeLabel,
+        coords: calculateCoordinates(targetUrl),
+        originCoords: calculateCoordinates(p.origin_url),
+        destCoords: calculateCoordinates(p.destination_url),
+        rawPlan: p,
+      };
+    });
 
-        const { results: archiveRecords } = await DB.prepare(`
+    const { results: archiveRecords } = await DB.prepare(
+      `
             SELECT * FROM travel_plans
             WHERE end_timestamp <= ? AND (origin_url = ? OR destination_url = ?)
-            ORDER BY end_timestamp DESC LIMIT 10
-        `).bind(now, landingSite, landingSite).all();
-        archive = (archiveRecords || []).map((p: any) => ({
-            ship_id: p.ship_id,
-            event: p.destination_url === landingSite ? 'ARRIVED' : 'DEPARTED',
-            location_name: new URL(p.destination_url === landingSite ? p.origin_url : p.destination_url).hostname,
-            location_url: p.destination_url === landingSite ? p.origin_url : p.destination_url,
-            timestamp: p.end_timestamp,
-        }));
-    } catch (e) {
-        console.error("Database fetch failed.", e);
-    }
+            ORDER BY end_timestamp DESC LIMIT 20
+        `,
+    )
+      .bind(now, landingSite, landingSite)
+      .all();
+    archive = (archiveRecords || []).map((p: any) => ({
+      ship_id: p.ship_id,
+      event: p.destination_url === landingSite ? "ARRIVED" : "DEPARTED",
+      location_name: new URL(
+        p.destination_url === landingSite ? p.origin_url : p.destination_url,
+      ).hostname,
+      location_url:
+        p.destination_url === landingSite ? p.origin_url : p.destination_url,
+      timestamp: p.end_timestamp,
+    }));
+  } catch (e) {
+    console.error("Database fetch failed.", e);
+  }
 }
 
 const enrichedLinks = WARP_LINKS.map((link, index) => {
-    return {
-        ...link,
-        id: index + 1,
-        coords: calculateCoordinates(link.url)
-    };
+  return {
+    ...link,
+    id: index + 1,
+    coords: calculateCoordinates(link.url),
+  };
 });
 ---
 
@@ -129,14 +154,20 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
     <script is:inline src="/three.min.js"></script>
     <script is:inline src="/map.js" defer></script>
   </head>
-  <body data-my-x={myCoords.x} data-my-y={myCoords.y} data-my-z={myCoords.z} data-landing-site={landingSite} data-departure-buffer={departureBuffer}>
+  <body
+    data-my-x={myCoords.x}
+    data-my-y={myCoords.y}
+    data-my-z={myCoords.z}
+    data-landing-site={landingSite}
+    data-departure-buffer={departureBuffer}
+  >
     <div class="planet-container">
       <div class="atmosphere"></div>
       <div class="ring-back"></div>
       <div class="planet"></div>
       <div class="ring"></div>
     </div>
-    
+
     <h1>{planetName}</h1>
     <p>{planetDescription}</p>
     <p>
@@ -147,45 +178,56 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
     <div class="status-badge">Space Port Active</div>
 
     <div id="flight-deck" class="flight-deck hidden">
-        <div class="deck-content">
-            <h3>Initiate Jump Sequence</h3>
-            <div class="target-info">
-                <span class="label">Destination:</span>
-                <span id="target-name" class="value">---</span>
-            </div>
-            <div class="target-coords">
-                <span class="label">Coordinates:</span>
-                <code id="target-coords" class="value">---</code>
-            </div>
-            <div class="ship-input-group" style="margin-bottom: 1rem;">
-                <label for="ship-name" class="label" style="display: block; margin-bottom: 0.3rem;">Ship Designation:</label>
-                <input 
-                    type="text" 
-                    id="ship-name" 
-                    class="ship-input" 
-                    placeholder="Enter ship name..."
-                    style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--warp-accent); color: #fff; padding: 0.5rem; border-radius: 4px; font-family: 'Courier New', monospace;"
-                />
-            </div>
-            <div class="jump-metrics">
-                <div class="metric">
-                    <span class="label">Distance:</span>
-                    <span id="jump-distance" class="value">0.00</span> <span class="unit">sparsecs</span>
-                </div>
-                <div class="metric">
-                    <span class="label">Time:</span>
-                    <span id="jump-time" class="value">0.00</span> <span class="unit">FY</span>
-                </div>
-            </div>
-            <button id="initiate-jump" class="jump-button">JUMP</button>
-            <button id="cancel-jump" class="cancel-button">CANCEL</button>
+      <div class="deck-content">
+        <h3>Initiate Jump Sequence</h3>
+        <div class="target-info">
+          <span class="label">Destination:</span>
+          <span id="target-name" class="value">---</span>
         </div>
+        <div class="target-coords">
+          <span class="label">Coordinates:</span>
+          <code id="target-coords" class="value">---</code>
+        </div>
+        <div class="ship-input-group" style="margin-bottom: 1rem;">
+          <label
+            for="ship-name"
+            class="label"
+            style="display: block; margin-bottom: 0.3rem;"
+            >Shuttle Designation:</label
+          >
+          <input
+            type="text"
+            id="ship-name"
+            class="ship-input"
+            placeholder="Enter ship name..."
+            style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--warp-accent); color: #fff; padding: 0.5rem; border-radius: 4px; font-family: 'Courier New', monospace;"
+          />
+        </div>
+        <div class="jump-metrics">
+          <div class="metric">
+            <span class="label">Distance:</span>
+            <span id="jump-distance" class="value">0.00</span>
+            <span class="unit">sparsecs</span>
+          </div>
+          <div class="metric">
+            <span class="label">Time:</span>
+            <span id="jump-time" class="value">0.00</span>
+            <span class="unit">FY</span>
+          </div>
+        </div>
+        <button id="initiate-jump" class="jump-button">JUMP</button>
+        <button id="cancel-jump" class="cancel-button">CANCEL</button>
+      </div>
     </div>
 
     <section class="space-port">
       <div class="traffic-log">
         <h3>Live Space Port Traffic</h3>
-        <table id="traffic-table" class="traffic-table" style={traffic.length === 0 ? 'display:none' : ''}>
+        <table
+          id="traffic-table"
+          class="traffic-table"
+          style={traffic.length === 0 ? "display:none" : ""}
+        >
           <thead>
             <tr>
               <th>Ship</th>
@@ -195,39 +237,64 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
             </tr>
           </thead>
           <tbody id="traffic-tbody">
-            {traffic.map(item => (
-              <tr class={`${item.type} status-${item.type === 'preparation' && item.status === 'TRANSIT' ? 'scheduled' : item.status.toLowerCase()}`}
+            {
+              traffic.map((item) => (
+                <tr
+                  class={`${item.type} status-${item.type === "preparation" && item.status === "TRANSIT" ? "scheduled" : item.status.toLowerCase()}`}
                   data-plan-id={item.id}
                   data-ship-id={item.ship}
-                  data-event={item.type === 'incoming' ? 'ARRIVED' : 'DEPARTED'}
+                  data-event={item.type === "incoming" ? "ARRIVED" : "DEPARTED"}
                   data-location-name={item.planetName}
-                  data-location-coords={item.coords.formatted}>
-                <td class="ship-id">{item.ship}</td>
-                <td><span class="status-label">{item.type === 'preparation' && item.status === 'TRANSIT' ? 'SCHEDULED' : item.status === 'TRANSIT' ? 'IN TRANSIT' : item.status}</span></td>
-                <td class="location">
-                  {item.dir}: {item.planetName}<br />
-                  <code class="coord-sm">{item.coords.formatted}</code>
-                </td>
-                <td class="eta"
+                  data-location-coords={item.coords.formatted}
+                >
+                  <td class="ship-id">{item.ship}</td>
+                  <td>
+                    <span class="status-label">
+                      {item.type === "preparation" && item.status === "TRANSIT"
+                        ? "SCHEDULED"
+                        : item.status === "TRANSIT"
+                          ? "IN TRANSIT"
+                          : item.status}
+                    </span>
+                  </td>
+                  <td class="location">
+                    {item.dir}: {item.planetName}
+                    <br />
+                    <code class="coord-sm">{item.coords.formatted}</code>
+                  </td>
+                  <td
+                    class="eta"
                     data-filed={item.rawPlan.start_timestamp - departureBuffer}
                     data-start={item.rawPlan.start_timestamp}
                     data-end={item.rawPlan.end_timestamp}
-                    data-type={item.type}>
-                  <div class="eta-time">{item.time}</div>
-                  <div class="eta-bar-track">
-                    <div class="eta-bar-fill"></div>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                    data-type={item.type}
+                  >
+                    <div class="eta-time">{item.time}</div>
+                    <div class="eta-bar-track">
+                      <div class="eta-bar-fill" />
+                    </div>
+                  </td>
+                </tr>
+              ))
+            }
           </tbody>
         </table>
-        <p id="traffic-empty" class="empty-msg" style={traffic.length > 0 ? 'display:none' : ''}>No active traffic in sector.</p>
+        <p
+          id="traffic-empty"
+          class="empty-msg"
+          style={traffic.length > 0 ? "display:none" : ""}
+        >
+          No active traffic in sector.
+        </p>
       </div>
 
       <div class="mission-archive">
         <h3>Recent Mission Archive</h3>
-        <table id="archive-table" class="archive-table" style={archive.length === 0 ? 'display:none' : ''}>
+        <table
+          id="archive-table"
+          class="archive-table"
+          style={archive.length === 0 ? "display:none" : ""}
+        >
           <thead>
             <tr>
               <th>Ship</th>
@@ -237,20 +304,51 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
             </tr>
           </thead>
           <tbody id="archive-tbody">
-            {archive.map((item: any) => (
-              <tr class={item.event.toLowerCase()}>
-                <td class="ship-id">{item.ship_id}</td>
-                <td><span class="event-label">{item.event}</span></td>
-                <td class="location">
-                  {item.location_name}<br />
-                  <code class="coord-sm">{calculateCoordinates(item.location_url).formatted}</code>
-                </td>
-                <td class="timestamp">{new Date(item.timestamp).toLocaleTimeString()}</td>
-              </tr>
-            ))}
+            {
+              archive.map((item: any, i: number) => (
+                <tr
+                  class={`${item.event.toLowerCase()}${i >= 5 ? " archive-extra" : ""}`}
+                >
+                  <td class="ship-id">{item.ship_id}</td>
+                  <td>
+                    <span class="event-label">{item.event}</span>
+                  </td>
+                  <td class="location">
+                    {item.location_name}
+                    <br />
+                    <code class="coord-sm">
+                      {calculateCoordinates(item.location_url).formatted}
+                    </code>
+                  </td>
+                  <td class="timestamp">
+                    {new Date(item.timestamp).toLocaleTimeString()}
+                  </td>
+                </tr>
+              ))
+            }
           </tbody>
         </table>
-        <p id="archive-empty" class="empty-msg" style={archive.length > 0 ? 'display:none' : ''}>Archive empty. Secure sector.</p>
+        <div
+          id="archive-controls"
+          style={archive.length <= 5 ? "display:none" : ""}
+        >
+          <button id="archive-see-all" class="archive-see-all">See all</button>
+          <span id="archive-pagination" style="display:none">
+            <button id="archive-prev" class="archive-nav" disabled
+              >&lsaquo; Prev</button
+            >
+            <span id="archive-page-label" class="archive-page-label">1 / 1</span
+            >
+            <button id="archive-next" class="archive-nav">Next &rsaquo;</button>
+          </span>
+        </div>
+        <p
+          id="archive-empty"
+          class="empty-msg"
+          style={archive.length > 0 ? "display:none" : ""}
+        >
+          Archive empty. Secure sector.
+        </p>
       </div>
     </section>
 
@@ -259,7 +357,11 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
 
       <div class="warp-ring-content">
         <div class="star-map-wrapper">
-          <div class="star-map-container" id="three-container" data-ships={JSON.stringify(traffic)}>
+          <div
+            class="star-map-container"
+            id="three-container"
+            data-ships={JSON.stringify(traffic)}
+          >
             <div class="map-label">1000x1000x1000 SPARSEC GRID</div>
           </div>
 
@@ -276,138 +378,224 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         </div>
 
         <ol class="warp-links">
-          {enrichedLinks.map(link => (
-            <li>
-              <a 
-                href={link.url}
-                data-id={link.id}
-                data-x={link.coords.x}
-                data-y={link.coords.y}
-                data-z={link.coords.z}
-                data-name={link.name}
-                data-formatted={link.coords.formatted}
-              >
-                {link.name}
-              </a>
-              <code class="coord" data-id={link.id}>{link.coords.formatted}</code>
-            </li>
-          ))}
+          {
+            enrichedLinks.map((link) => (
+              <li>
+                <a
+                  href={link.url}
+                  data-id={link.id}
+                  data-x={link.coords.x}
+                  data-y={link.coords.y}
+                  data-z={link.coords.z}
+                  data-name={link.name}
+                  data-formatted={link.coords.formatted}
+                >
+                  {link.name}
+                </a>
+                <code class="coord" data-id={link.id}>
+                  {link.coords.formatted}
+                </code>
+              </li>
+            ))
+          }
         </ol>
       </div>
     </section>
 
     <footer>
       {planetName} is one of the
-      <a href="https://federatedplanets.com">Federated Planets</a> terraformed
-      with
+      <a href="https://federatedplanets.com">Federated Planets</a> terraformed with
       <a href="https://github.com/Federated-Planets/planet">Source Codia</a>.
     </footer>
 
     <script is:inline>
-        const myX = parseFloat(document.body.dataset.myX);
-        const myY = parseFloat(document.body.dataset.myY);
-        const myZ = parseFloat(document.body.dataset.myZ);
+      const myX = parseFloat(document.body.dataset.myX);
+      const myY = parseFloat(document.body.dataset.myY);
+      const myZ = parseFloat(document.body.dataset.myZ);
 
-        const flightDeck = document.getElementById('flight-deck');
-        const targetName = document.getElementById('target-name');
-        const targetCoords = document.getElementById('target-coords');
-        const jumpDistance = document.getElementById('jump-distance');
-        const jumpTime = document.getElementById('jump-time');
-        const shipNameInput = document.getElementById('ship-name');
-        const initiateBtn = document.getElementById('initiate-jump');
-        const cancelBtn = document.getElementById('cancel-jump');
+      const flightDeck = document.getElementById("flight-deck");
+      const targetName = document.getElementById("target-name");
+      const targetCoords = document.getElementById("target-coords");
+      const jumpDistance = document.getElementById("jump-distance");
+      const jumpTime = document.getElementById("jump-time");
+      const shipNameInput = document.getElementById("ship-name");
+      const initiateBtn = document.getElementById("initiate-jump");
+      const cancelBtn = document.getElementById("cancel-jump");
 
-        let currentTarget = null;
+      let currentTarget = null;
 
-        const generateShipSuggestion = () => {
-            const prefixes = ['SS', 'HMS', 'NCC', 'RA', 'X'];
-            const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-            const suffix = Math.random().toString(36).substr(2, 4).toUpperCase();
-            return `${prefix}-${suffix}`;
-        };
+      const generateShipSuggestion = () => {
+        const names = [
+          "Tiberius",
+          "Spring",
+          "Meridian",
+          "Avalon",
+          "Caspian",
+          "Orion",
+          "Solstice",
+          "Ember",
+          "Halcyon",
+          "Dawnstar",
+          "Vega",
+          "Cirrus",
+          "Nimbus",
+          "Equinox",
+          "Perihelion",
+          "Argent",
+          "Celeste",
+          "Horizon",
+          "Zenith",
+          "Aurora",
+        ];
+        const suffixes = ["", "", "", " II", " III", " IV"];
+        const name = names[Math.floor(Math.random() * names.length)];
+        const suffix = suffixes[Math.floor(Math.random() * suffixes.length)];
+        return `${name}${suffix}`;
+      };
 
-        window.addEventListener('planetSelected', (e) => {
-            const data = e.detail;
-            currentTarget = data;
-            
-            targetName.textContent = data.name;
-            targetCoords.textContent = data.formatted;
-            shipNameInput.value = generateShipSuggestion();
-            
-            const dx = data.x - myX;
-            const dy = data.y - myY;
-            const dz = data.z - myZ;
-            const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
-            const time = distance / 100;
-            
-            jumpDistance.textContent = distance.toFixed(2);
-            jumpTime.textContent = time.toFixed(2);
-            
-            flightDeck.classList.remove('hidden');
+      window.addEventListener("planetSelected", (e) => {
+        const data = e.detail;
+        currentTarget = data;
+
+        targetName.textContent = data.name;
+        targetCoords.textContent = data.formatted;
+        shipNameInput.value = generateShipSuggestion();
+
+        const dx = data.x - myX;
+        const dy = data.y - myY;
+        const dz = data.z - myZ;
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const time = distance / 100;
+
+        jumpDistance.textContent = distance.toFixed(2);
+        jumpTime.textContent = time.toFixed(2);
+
+        flightDeck.classList.remove("hidden");
+      });
+
+      cancelBtn.addEventListener("click", () => {
+        flightDeck.classList.add("hidden");
+        window.dispatchEvent(new CustomEvent("clearSelection"));
+      });
+
+      const archiveTable = document.getElementById("archive-table");
+      const archiveTbody = document.getElementById("archive-tbody");
+      const archiveEmpty = document.getElementById("archive-empty");
+      const archiveControls = document.getElementById("archive-controls");
+      const archiveSeeAll = document.getElementById("archive-see-all");
+      const archivePagination = document.getElementById("archive-pagination");
+      const archivePrev = document.getElementById("archive-prev");
+      const archiveNext = document.getElementById("archive-next");
+      const archivePageLabel = document.getElementById("archive-page-label");
+
+      const ARCHIVE_COLLAPSED = 5;
+      const ARCHIVE_PAGE_SIZE = 10;
+      let archiveExpanded = false;
+      let archivePage = 0;
+
+      const renderArchive = () => {
+        const rows = Array.from(archiveTbody.querySelectorAll("tr"));
+        const totalPages = Math.ceil(rows.length / ARCHIVE_PAGE_SIZE);
+        rows.forEach((r, i) => {
+          if (!archiveExpanded) {
+            r.style.display = i < ARCHIVE_COLLAPSED ? "" : "none";
+          } else {
+            const pageStart = archivePage * ARCHIVE_PAGE_SIZE;
+            r.style.display =
+              i >= pageStart && i < pageStart + ARCHIVE_PAGE_SIZE ? "" : "none";
+          }
         });
+        if (archiveExpanded) {
+          archiveSeeAll.style.display = "none";
+          archivePagination.style.display =
+            rows.length > ARCHIVE_PAGE_SIZE ? "" : "none";
+          archivePrev.disabled = archivePage === 0;
+          archiveNext.disabled = archivePage >= totalPages - 1;
+          archivePageLabel.textContent = `${archivePage + 1} / ${totalPages}`;
+        } else {
+          archiveSeeAll.style.display =
+            rows.length > ARCHIVE_COLLAPSED ? "" : "none";
+          archivePagination.style.display = "none";
+        }
+        archiveControls.style.display =
+          rows.length > ARCHIVE_COLLAPSED ? "" : "none";
+      };
 
-        cancelBtn.addEventListener('click', () => {
-            flightDeck.classList.add('hidden');
-            window.dispatchEvent(new CustomEvent('clearSelection'));
-        });
+      archiveSeeAll.addEventListener("click", () => {
+        archiveExpanded = true;
+        archivePage = 0;
+        renderArchive();
+      });
 
-        const archiveTable  = document.getElementById('archive-table');
-        const archiveTbody  = document.getElementById('archive-tbody');
-        const archiveEmpty  = document.getElementById('archive-empty');
+      archivePrev.addEventListener("click", () => {
+        archivePage--;
+        renderArchive();
+      });
+      archiveNext.addEventListener("click", () => {
+        archivePage++;
+        renderArchive();
+      });
 
-        const ARRIVED_LINGER_MS = 5000;
+      const ARRIVED_LINGER_MS = 5000;
 
-        const moveToArchive = (row) => {
-            const event        = row.dataset.event || 'DEPARTED';
-            const locationName = row.dataset.locationName || '';
-            const locationCoords = row.dataset.locationCoords || '';
-            const shipId       = row.dataset.shipId || '';
-            const end          = parseInt(row.querySelector('.eta')?.dataset.end || '0');
-            const timestamp    = new Date(end || Date.now()).toLocaleTimeString();
+      const moveToArchive = (row) => {
+        const event = row.dataset.event || "DEPARTED";
+        const locationName = row.dataset.locationName || "";
+        const locationCoords = row.dataset.locationCoords || "";
+        const shipId = row.dataset.shipId || "";
+        const end = parseInt(row.querySelector(".eta")?.dataset.end || "0");
+        const timestamp = new Date(end || Date.now()).toLocaleTimeString();
 
-            const archiveRow = document.createElement('tr');
-            archiveRow.className = event.toLowerCase();
-            archiveRow.innerHTML = `
+        const archiveRow = document.createElement("tr");
+        archiveRow.className = event.toLowerCase();
+        archiveRow.innerHTML = `
                 <td class="ship-id">${shipId}</td>
                 <td><span class="event-label">${event}</span></td>
                 <td class="location">${locationName}<br/><code class="coord-sm">${locationCoords}</code></td>
                 <td class="timestamp">${timestamp}</td>`;
 
-            archiveTbody.prepend(archiveRow);
-            archiveTable.style.display = '';
-            archiveEmpty.style.display = 'none';
+        archiveTbody.prepend(archiveRow);
+        archiveTable.style.display = "";
+        archiveEmpty.style.display = "none";
 
-            // Keep archive to last 10 entries
-            while (archiveTbody.children.length > 10) archiveTbody.removeChild(archiveTbody.lastChild);
+        // Keep archive to last 20 entries
+        while (archiveTbody.children.length > 20)
+          archiveTbody.removeChild(archiveTbody.lastChild);
 
-            row.remove();
-            if (trafficTbody.children.length === 0) {
-                trafficTable.style.display = 'none';
-                trafficEmpty.style.display = '';
-            }
-        };
+        renderArchive();
 
-        const setRowStatus = (row, statusKey, labelText) => {
-            row.classList.remove('status-preparing', 'status-scheduled', 'status-transit');
-            row.classList.add(`status-${statusKey}`);
-            row.querySelector('.status-label').textContent = labelText;
-        };
+        row.remove();
+        if (trafficTbody.children.length === 0) {
+          trafficTable.style.display = "none";
+          trafficEmpty.style.display = "";
+        }
+      };
 
-        const trafficTable = document.getElementById('traffic-table');
-        const trafficTbody = document.getElementById('traffic-tbody');
-        const trafficEmpty = document.getElementById('traffic-empty');
+      const setRowStatus = (row, statusKey, labelText) => {
+        row.classList.remove(
+          "status-preparing",
+          "status-scheduled",
+          "status-transit",
+        );
+        row.classList.add(`status-${statusKey}`);
+        row.querySelector(".status-label").textContent = labelText;
+      };
 
-        const addTrafficRow = (plan, filedAt) => {
-            const destHostname = new URL(plan.destination_url).hostname;
-            const eta = new Date(plan.end_timestamp).toLocaleTimeString();
-            const tr = document.createElement('tr');
-            tr.className = 'outgoing status-preparing';
-            tr.dataset.planId = plan.id;
-            tr.dataset.shipId = plan.ship_id;
-            tr.dataset.event = 'DEPARTED';
-            tr.dataset.locationName = new URL(plan.destination_url).hostname;
-            tr.dataset.locationCoords = currentTarget.formatted;
-            tr.innerHTML = `
+      const trafficTable = document.getElementById("traffic-table");
+      const trafficTbody = document.getElementById("traffic-tbody");
+      const trafficEmpty = document.getElementById("traffic-empty");
+
+      const addTrafficRow = (plan, filedAt) => {
+        const destHostname = new URL(plan.destination_url).hostname;
+        const eta = new Date(plan.end_timestamp).toLocaleTimeString();
+        const tr = document.createElement("tr");
+        tr.className = "outgoing status-preparing";
+        tr.dataset.planId = plan.id;
+        tr.dataset.shipId = plan.ship_id;
+        tr.dataset.event = "DEPARTED";
+        tr.dataset.locationName = new URL(plan.destination_url).hostname;
+        tr.dataset.locationCoords = currentTarget.formatted;
+        tr.innerHTML = `
                 <td class="ship-id">${plan.ship_id}</td>
                 <td><span class="status-label">${plan.status}</span></td>
                 <td class="location">to: ${destHostname}<br/><code class="coord-sm">${currentTarget.formatted}</code></td>
@@ -415,107 +603,127 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                     <div class="eta-time">Arr: ${eta}</div>
                     <div class="eta-bar-track"><div class="eta-bar-fill"></div></div>
                 </td>`;
-            trafficTbody.appendChild(tr);
-            trafficEmpty.style.display = 'none';
-            trafficTable.style.display = '';
-            document.querySelector('.space-port').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        };
+        trafficTbody.appendChild(tr);
+        trafficEmpty.style.display = "none";
+        trafficTable.style.display = "";
+        document
+          .querySelector(".space-port")
+          .scrollIntoView({ behavior: "smooth", block: "start" });
+      };
 
-        const departureBufferMs = parseInt(document.body.dataset.departureBuffer || '30000');
+      const departureBufferMs = parseInt(
+        document.body.dataset.departureBuffer || "30000",
+      );
 
-        initiateBtn.addEventListener('click', async () => {
-            const shipId = shipNameInput.value.trim() || 'UNKNOWN-SHIP';
-            const filedAt = Date.now();
-            initiateBtn.disabled = true;
-            initiateBtn.textContent = 'CONSENSUS...';
+      initiateBtn.addEventListener("click", async () => {
+        const shipId =
+          "Shuttle " + (shipNameInput.value.trim() || "UNKNOWN-SHIP");
+        const filedAt = Date.now();
+        initiateBtn.disabled = true;
+        initiateBtn.textContent = "CONSENSUS...";
 
-            try {
-                const response = await fetch('/api/v1/port?action=initiate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        ship_id: shipId,
-                        destination_url: currentTarget.url,
-                        departure_timestamp: Date.now()
-                    })
-                });
+        try {
+          const response = await fetch("/api/v1/port?action=initiate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ship_id: shipId,
+              destination_url: currentTarget.url,
+              departure_timestamp: Date.now(),
+            }),
+          });
 
-                const data = await response.json();
-                if (data.plan) {
-                    addTrafficRow(data.plan, filedAt);
-                    flightDeck.classList.add('hidden');
-                    window.dispatchEvent(new CustomEvent('clearSelection'));
-                } else {
-                    alert('Consensus Rejected: ' + (data.error || 'Unknown error'));
-                    initiateBtn.disabled = false;
-                    initiateBtn.textContent = 'JUMP';
-                }
-            } catch (e) {
-                alert('Consensus Error: ' + e.message);
-                initiateBtn.disabled = false;
-                initiateBtn.textContent = 'JUMP';
+          const data = await response.json();
+          if (data.plan) {
+            addTrafficRow(data.plan, filedAt);
+            flightDeck.classList.add("hidden");
+            window.dispatchEvent(new CustomEvent("clearSelection"));
+          } else {
+            alert("Consensus Rejected: " + (data.error || "Unknown error"));
+            initiateBtn.disabled = false;
+            initiateBtn.textContent = "JUMP";
+          }
+        } catch (e) {
+          alert("Consensus Error: " + e.message);
+          initiateBtn.disabled = false;
+          initiateBtn.textContent = "JUMP";
+        }
+      });
+
+      // WebSocket: live status updates from TrafficControl DO
+      const EVENT_STATUS = {
+        PREPARE_PLAN: "PREPARING",
+        QUORUM_REACHED: "IN TRANSIT",
+      };
+
+      const applyEvent = (event) => {
+        const status = EVENT_STATUS[event.type];
+        if (!status || !event.plan_id) return;
+        const row = document.querySelector(
+          `tr[data-plan-id="${event.plan_id}"]`,
+        );
+        if (!row) return;
+        const startTime = parseInt(
+          row.querySelector(".eta")?.dataset.start || "0",
+        );
+        const isScheduled = status === "IN TRANSIT" && Date.now() < startTime;
+        setRowStatus(
+          row,
+          isScheduled ? "scheduled" : status.toLowerCase(),
+          isScheduled ? "SCHEDULED" : status,
+        );
+      };
+
+      (() => {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const connect = () => {
+          const ws = new WebSocket(
+            `${protocol}//${window.location.host}/api/v1/control-ws`,
+          );
+          ws.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
+            if (msg.type === "history") {
+              msg.data.forEach(applyEvent);
+            } else {
+              applyEvent(msg);
             }
+          };
+          ws.onclose = () => setTimeout(connect, 3000);
+        };
+        connect();
+      })();
+
+      // Progress bars for Live Space Port Traffic
+      const updateEtaBars = () => {
+        const now = Date.now();
+        document.querySelectorAll(".eta[data-start]").forEach((td) => {
+          const filed = parseInt(td.dataset.filed || td.dataset.start);
+          const start = parseInt(td.dataset.start);
+          const end = parseInt(td.dataset.end);
+          const fill = td.querySelector(".eta-bar-fill");
+          if (!fill) return;
+          const p = Math.max(0, Math.min(1, (now - filed) / (end - filed)));
+          fill.style.width = p * 100 + "%";
+
+          const row = td.closest("tr");
+          if (!row) return;
+          if (row.classList.contains("status-scheduled") && now >= start) {
+            setRowStatus(row, "transit", "IN TRANSIT");
+          }
+          if (
+            now >= end &&
+            !row.classList.contains("status-arrived") &&
+            !row.dataset.arrivalScheduled
+          ) {
+            row.dataset.arrivalScheduled = "1";
+            setRowStatus(row, "arrived", "ARRIVED");
+            setTimeout(() => moveToArchive(row), ARRIVED_LINGER_MS);
+          }
         });
-
-        // WebSocket: live status updates from TrafficControl DO
-        const EVENT_STATUS = {
-            'PREPARE_PLAN':   'PREPARING',
-            'QUORUM_REACHED': 'IN TRANSIT',
-        };
-
-        const applyEvent = (event) => {
-            const status = EVENT_STATUS[event.type];
-            if (!status || !event.plan_id) return;
-            const row = document.querySelector(`tr[data-plan-id="${event.plan_id}"]`);
-            if (!row) return;
-            const startTime = parseInt(row.querySelector('.eta')?.dataset.start || '0');
-            const isScheduled = status === 'IN TRANSIT' && Date.now() < startTime;
-            setRowStatus(row, isScheduled ? 'scheduled' : status.toLowerCase(), isScheduled ? 'SCHEDULED' : status);
-        };
-
-        (() => {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const connect = () => {
-                const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/control-ws`);
-                ws.onmessage = (e) => {
-                    const msg = JSON.parse(e.data);
-                    if (msg.type === 'history') {
-                        msg.data.forEach(applyEvent);
-                    } else {
-                        applyEvent(msg);
-                    }
-                };
-                ws.onclose = () => setTimeout(connect, 3000);
-            };
-            connect();
-        })();
-
-        // Progress bars for Live Space Port Traffic
-        const updateEtaBars = () => {
-            const now = Date.now();
-            document.querySelectorAll('.eta[data-start]').forEach(td => {
-                const filed = parseInt(td.dataset.filed || td.dataset.start);
-                const start = parseInt(td.dataset.start);
-                const end = parseInt(td.dataset.end);
-                const fill = td.querySelector('.eta-bar-fill');
-                if (!fill) return;
-                const p = Math.max(0, Math.min(1, (now - filed) / (end - filed)));
-                fill.style.width = (p * 100) + '%';
-
-                const row = td.closest('tr');
-                if (!row) return;
-                if (row.classList.contains('status-scheduled') && now >= start) {
-                    setRowStatus(row, 'transit', 'IN TRANSIT');
-                }
-                if (now >= end && !row.classList.contains('status-arrived') && !row.dataset.arrivalScheduled) {
-                    row.dataset.arrivalScheduled = '1';
-                    setRowStatus(row, 'arrived', 'ARRIVED');
-                    setTimeout(() => moveToArchive(row), ARRIVED_LINGER_MS);
-                }
-            });
-        };
-        updateEtaBars();
-        setInterval(updateEtaBars, 1000);
+      };
+      renderArchive();
+      updateEtaBars();
+      setInterval(updateEtaBars, 1000);
     </script>
   </body>
 </html>

@@ -4,36 +4,34 @@
   "compatibility_date": "2024-04-03",
   "assets": {
     "directory": "dist/client",
-    "binding": "STATIC_ASSETS"
+    "binding": "STATIC_ASSETS",
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "planet_db",
       "database_id": "your-d1-id-here", // To be replaced during deployment
-      "migrations_dir": "migrations"
-    }
+      "migrations_dir": "migrations",
+    },
   ],
   "kv_namespaces": [
     {
       "binding": "KV",
-      "id": "your-kv-id-here" // To be replaced during deployment
-    }
+      "id": "your-kv-id-here", // To be replaced during deployment
+    },
   ],
   "durable_objects": {
     "bindings": [
       {
         "name": "TRAFFIC_CONTROL",
-        "class_name": "TrafficControl"
-      }
-    ]
+        "class_name": "TrafficControl",
+      },
+    ],
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_classes": [
-        "TrafficControl"
-      ]
-    }
-  ]
+      "new_classes": ["TrafficControl"],
+    },
+  ],
 }
