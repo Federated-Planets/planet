@@ -288,7 +288,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
             {
               traffic.map((item) => (
                 <tr
-                  class={`${item.type} status-${item.type === "preparation" && item.status === "TRANSIT" ? "scheduled" : item.status.toLowerCase()}`}
+                  class={`${item.type} status-${item.type === "preparation" && item.status === "PLAN_ACCEPTED" ? "scheduled" : item.status === "PLAN_ACCEPTED" ? "transit" : item.status.toLowerCase()}`}
                   data-plan-id={item.id}
                   data-ship-id={item.ship}
                   data-event={item.type === "incoming" ? "ARRIVED" : "DEPARTED"}
@@ -298,9 +298,10 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                   <td class="ship-id">{item.ship}</td>
                   <td>
                     <span class="status-label">
-                      {item.type === "preparation" && item.status === "TRANSIT"
+                      {item.type === "preparation" &&
+                      item.status === "PLAN_ACCEPTED"
                         ? "SCHEDULED"
-                        : item.status === "TRANSIT"
+                        : item.status === "PLAN_ACCEPTED"
                           ? "IN TRANSIT"
                           : item.status}
                     </span>

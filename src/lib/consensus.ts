@@ -30,7 +30,7 @@ export interface TravelPlan {
   destination_url: string;
   start_timestamp: number;
   end_timestamp: number;
-  status: "PREPARING" | "TRANSIT" | "ARRIVED";
+  status: "PREPARING" | "PLAN_ACCEPTED";
   traffic_controllers: string[]; // List of landing site URLs elected
   signatures: Record<string, string>; // planet_url -> signature
 }
