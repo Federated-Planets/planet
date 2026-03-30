@@ -29,7 +29,8 @@
     ]
   },
   "vars": {
-    "WARP_MS_PER_FY": "10000"
+    "WARP_MS_PER_FY": "10000",
+    "DEPARTURE_BUFFER_MS": "5000"
   },
   "migrations": [
     {
