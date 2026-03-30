@@ -220,6 +220,21 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
       </div>
     </div>
 
+    <div id="no-travel-dialog" class="flight-deck hidden">
+      <div class="deck-content">
+        <h3>Travel Not Available</h3>
+        <p id="no-travel-reason" style="margin: 0.5rem 0 1rem;"></p>
+        <p
+          style="margin: 0 0 1rem; color: var(--warp-text-dim); font-size: 0.85rem;"
+        >
+          To enable travel, ensure the destination and at least 3 planets in the
+          <strong>Active Warp Ring Connections</strong> below are running an active
+          space port and are reachable from this planet.
+        </p>
+        <button id="no-travel-close" class="cancel-button">DISMISS</button>
+      </div>
+    </div>
+
     <section class="space-port">
       <div class="traffic-log">
         <h3>Live Space Port Traffic</h3>
@@ -615,6 +630,20 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         document.body.dataset.departureBuffer || "30000",
       );
 
+      const noTravelDialog = document.getElementById("no-travel-dialog");
+      const noTravelReason = document.getElementById("no-travel-reason");
+      const NO_TRAVEL_MESSAGES = {
+        no_destination_space_port:
+          "The destination planet does not have an active space port. Jump travel requires a functioning space port at both origin and destination.",
+        insufficient_controllers:
+          "This planet does not have enough active neighboring space ports to establish a consensus quorum. At least 4 reachable planets with space ports are required to safely authorize jump travel.",
+      };
+      document
+        .getElementById("no-travel-close")
+        .addEventListener("click", () => {
+          noTravelDialog.classList.add("hidden");
+        });
+
       initiateBtn.addEventListener("click", async () => {
         const shipId =
           "Shuttle " + (shipNameInput.value.trim() || "UNKNOWN-SHIP");
@@ -638,6 +667,17 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
             addTrafficRow(data.plan, filedAt);
             flightDeck.classList.add("hidden");
             window.dispatchEvent(new CustomEvent("clearSelection"));
+          } else if (
+            data.error === "insufficient_controllers" ||
+            data.error === "no_destination_space_port"
+          ) {
+            flightDeck.classList.add("hidden");
+            window.dispatchEvent(new CustomEvent("clearSelection"));
+            noTravelReason.textContent =
+              NO_TRAVEL_MESSAGES[data.error] || "Travel is not available.";
+            noTravelDialog.classList.remove("hidden");
+            initiateBtn.disabled = false;
+            initiateBtn.textContent = "JUMP";
           } else {
             alert("Consensus Rejected: " + (data.error || "Unknown error"));
             initiateBtn.disabled = false;
