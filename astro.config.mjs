@@ -7,7 +7,7 @@ export default defineConfig({
     imageService: 'cloudflare',
     platformProxy: {
       enabled: true,
-      configPath: 'wrangler.jsonc',
+      configPath: 'wrangler.build.jsonc',
       persist: true,
     },
   }),

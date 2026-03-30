@@ -1,8 +1,11 @@
-export default class TrafficControl {
+import { DurableObject } from 'cloudflare:workers';
+
+export default class TrafficControl extends DurableObject {
   private sessions: Set<WebSocket> = new Set();
   private events: any[] = [];
 
   constructor(state: any, env: any) {
+    super(state, env);
     console.log("[TrafficControl] Initialized");
   }
 

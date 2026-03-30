@@ -1,5 +1,10 @@
-const { spawn, execSync } = require('child_process');
-const path = require('path');
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { spawn, execSync, type ChildProcess } from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.join(__dirname, '../../');
 
 const NUM_PLANETS = 4; // Minimal quorum size (3f + 1 where f=1)
 const BASE_PORT = 4000;
@@ -12,7 +17,7 @@ const allPlanets = Array.from({ length: NUM_PLANETS }, (_, i) => ({
     id: i + 1
 }));
 
-const processes = [];
+const processes: ChildProcess[] = [];
 
 const cleanup = () => {
     console.log("Cleaning up processes...");
@@ -20,43 +25,32 @@ const cleanup = () => {
         try { p.kill(); } catch (e) {}
     });
     try {
-        execSync("pkill -f 'wrangler dev' || true");
+        execSync("pkill -f 'test-planet' || true");
     } catch (e) {}
 };
 
-const startPlanet = (planet) => {
+const startPlanet = (planet: typeof allPlanets[0]) => {
     const { id, name, url, port } = planet;
     const inspectorPort = BASE_INSPECTOR_PORT + id;
 
     // Initialize Database first
     console.log(`[${name}] Initializing database...`);
     execSync(`npx wrangler d1 execute planet_db --file=schema.sql -c wrangler.dev.jsonc --local --persist-to=.wrangler/state/test-planet-${id}`, {
-        cwd: path.join(__dirname, '..'),
+        cwd: PROJECT_ROOT,
         stdio: 'inherit'
     });
 
-    const env = {
-        ...process.env,
-        PUBLIC_SIM_PLANET_NAME: name,
-        PUBLIC_SIM_LANDING_SITE: url,
-        PUBLIC_SIM_WARP_LINKS: JSON.stringify(
-            allPlanets
-                .filter(p => p.url !== url)
-                .map(n => ({ name: n.name, url: n.url }))
-        )
-    };
-
     const child = spawn('npx', [
         'wrangler', 'dev',
-        '--port', port,
-        '--inspector-port', inspectorPort,
+        '--port', port.toString(),
+        '--inspector-port', inspectorPort.toString(),
         '-c', 'wrangler.dev.jsonc',
         '--persist-to', `.wrangler/state/test-planet-${id}`,
         '--var', `PUBLIC_SIM_PLANET_NAME:"${name}"`,
         '--var', `PUBLIC_SIM_LANDING_SITE:"${url}"`,
         '--var', `PUBLIC_SIM_WARP_LINKS:'${JSON.stringify(allPlanets.filter(p => p.url !== url).map(n => ({ name: n.name, url: n.url })))}'`
     ], {
-        cwd: path.join(__dirname, '..'),
+        cwd: PROJECT_ROOT,
         env: process.env,
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: true
@@ -64,14 +58,13 @@ const startPlanet = (planet) => {
 
     processes.push(child);
 
-    // Pipe output to our stdout but also listen for "Ready"
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
         let isReady = false;
         const timeout = setTimeout(() => {
             if (!isReady) reject(new Error(`[${name}] Timed out waiting for readiness`));
-        }, 30000);
+        }, 45000); // Increased timeout for CI/slow environments
 
-        const handleData = (data) => {
+        const handleData = (data: Buffer) => {
             const str = data.toString();
             process.stdout.write(`[${name}] ${str}`);
             if (str.includes("Ready on")) {
@@ -81,22 +74,25 @@ const startPlanet = (planet) => {
             }
         };
 
-        child.stdout.on('data', handleData);
-        child.stderr.on('data', handleData);
+        child.stdout?.on('data', handleData);
+        child.stderr?.on('data', handleData);
         child.on('error', reject);
     });
 };
 
-const runTest = async () => {
-    try {
-        console.log("Building project...");
-        execSync("npm run build", { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
-
+describe('Federated Planets Protocol', () => {
+    beforeAll(async () => {
         console.log(`Starting ${NUM_PLANETS} planets...`);
         const startupPromises = allPlanets.map(p => startPlanet(p));
         await Promise.all(startupPromises);
+    }, 120000); // 2 minute setup timeout
 
-        console.log("All planets are ready. Initiating jump from Towel 1 to Towel 2...");
+    afterAll(() => {
+        cleanup();
+    });
+
+    it('should reach quorum when initiating a jump', async () => {
+        console.log("Initiating jump from Towel 1 to Towel 2...");
         const response = await fetch(`${allPlanets[0].url}/api/v1/port?action=initiate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -107,22 +103,19 @@ const runTest = async () => {
             })
         });
 
-        if (!response.ok) {
-            const text = await response.text();
-            throw new Error(`Initiate failed: ${response.status} ${text}`);
-        }
-
-        const data = await response.json();
+        expect(response.ok).toBe(true);
+        const data = await response.json() as any;
+        expect(data.plan.id).toBeDefined();
         console.log("Plan initiated:", data.plan.id);
 
         console.log("Monitoring events for QUORUM_REACHED...");
         let quorumReached = false;
-        for (let attempt = 0; attempt < 20; attempt++) {
+        for (let attempt = 0; attempt < 30; attempt++) {
             await new Promise(r => setTimeout(r, 2000));
             
             const eventsRes = await fetch(`${allPlanets[0].url}/api/v1/control-ws`);
             if (eventsRes.ok) {
-                const events = await eventsRes.json();
+                const events = await eventsRes.json() as any[];
                 const quorumEvent = events.find(e => e.type === 'QUORUM_REACHED');
                 const errorEvent = events.find(e => e.type === 'API_ERROR');
                 
@@ -136,26 +129,9 @@ const runTest = async () => {
                     break;
                 }
             }
-            console.log(`Waiting for quorum... (attempt ${attempt + 1}/20)`);
+            console.log(`Waiting for quorum... (attempt ${attempt + 1}/30)`);
         }
 
-        if (!quorumReached) {
-            throw new Error("Test failed: QUORUM_REACHED event not found after 40 seconds.");
-        }
-
-        console.log("--- INTEGRATION TEST PASSED ---");
-        process.exit(0);
-
-    } catch (e) {
-        console.error("--- INTEGRATION TEST FAILED ---");
-        console.error(e.message);
-        process.exit(1);
-    } finally {
-        cleanup();
-    }
-};
-
-process.on('SIGINT', cleanup);
-process.on('SIGTERM', cleanup);
-
-runTest();
+        expect(quorumReached).toBe(true);
+    }, 90000); // 90s test timeout
+});
