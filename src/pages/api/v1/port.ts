@@ -366,10 +366,11 @@ async function handleInitiate(
   const originPool = originNeighbors.filter(
     (n) => !mandatoryUrls.has(n.landing_site),
   );
-  const originPoolUrls = new Set(originPool.map((n) => n.landing_site));
+  // Dest pool excludes only mandatory TCs; elected origin candidates are
+  // excluded below after the origin election so small networks (where both
+  // pools overlap) can still contribute planets to reach MIN_CONTROLLERS.
   const destPool = destNeighbors.filter(
-    (n) =>
-      !mandatoryUrls.has(n.landing_site) && !originPoolUrls.has(n.landing_site),
+    (n) => !mandatoryUrls.has(n.landing_site),
   );
 
   const originElected = TravelCalculator.electControllers(
@@ -377,9 +378,12 @@ async function handleInitiate(
     originPool,
     halfRemaining,
   );
-  const originElectedUrls = new Set(originElected.map((n) => n.landing_site));
-  // Dest pool is already disjoint from origin pool; additionally exclude any
-  // origin-elected candidates to avoid reducing effective diversity.
+  const originElectedUrls = new Set([
+    ...mandatoryUrls,
+    ...originElected.map((n) => n.landing_site),
+  ]);
+  // Exclude mandatory TCs and already-elected origin candidates so no planet
+  // is counted twice, but planets shared by both pools are still available.
   const destPoolFiltered = destPool.filter(
     (n) => !originElectedUrls.has(n.landing_site),
   );
