@@ -50,7 +50,7 @@ const simName = getSimVar("PUBLIC_SIM_PLANET_NAME");
 const simUrl = getSimVar("PUBLIC_SIM_LANDING_SITE");
 
 const planetName = simName || "Towel 42 Space Outpost";
-const landingSite = simUrl || Astro.url.origin;
+const landingSite = (simUrl || Astro.url.origin).replace(/\/$/, "");
 
 const planetDescription =
   "A remote outpost in the Federated Planets. A quiet spot for deep-space weary travelers. Don't panic, but bring a towel.";
@@ -80,6 +80,43 @@ if (DB) {
       .bind(now, landingSite, landingSite)
       .all();
 
+    // Build a URL→name map from warp links and the traffic_controllers cache
+    const warpNameMap = new Map(WARP_LINKS.map((l) => [l.url, l.name]));
+
+    const { results: archiveRecords } = await DB.prepare(
+      `
+            SELECT * FROM travel_plans
+            WHERE end_timestamp <= ? AND (origin_url = ? OR destination_url = ?)
+            ORDER BY end_timestamp DESC LIMIT 20
+        `,
+    )
+      .bind(now, landingSite, landingSite)
+      .all();
+
+    const allPlanUrls = [
+      ...(activePlans || []).flatMap((p: any) => [
+        p.origin_url,
+        p.destination_url,
+      ]),
+      ...(archiveRecords || []).flatMap((p: any) => [
+        p.origin_url,
+        p.destination_url,
+      ]),
+    ];
+    const uniqueUrls = [...new Set(allPlanUrls)].filter(
+      (u) => !warpNameMap.has(u) && u !== landingSite,
+    );
+    if (uniqueUrls.length > 0) {
+      const placeholders = uniqueUrls.map(() => "?").join(",");
+      const { results: cachedNames } = await DB.prepare(
+        `SELECT planet_url, name FROM traffic_controllers WHERE planet_url IN (${placeholders})`,
+      )
+        .bind(...uniqueUrls)
+        .all();
+      for (const row of cachedNames || [])
+        warpNameMap.set((row as any).planet_url, (row as any).name);
+    }
+
     traffic = (activePlans || []).map((p: any) => {
       const isOrigin = p.origin_url === landingSite;
       const targetUrl = isOrigin ? p.destination_url : p.origin_url;
@@ -100,7 +137,7 @@ if (DB) {
         ship: p.ship_id,
         status: p.status,
         dir: isOrigin ? "to" : "from",
-        planetName: targetHostname,
+        planetName: warpNameMap.get(targetUrl) ?? targetHostname,
         url: targetUrl,
         time: timeLabel,
         coords: calculateCoordinates(targetUrl),
@@ -110,25 +147,21 @@ if (DB) {
       };
     });
 
-    const { results: archiveRecords } = await DB.prepare(
-      `
-            SELECT * FROM travel_plans
-            WHERE end_timestamp <= ? AND (origin_url = ? OR destination_url = ?)
-            ORDER BY end_timestamp DESC LIMIT 20
-        `,
-    )
-      .bind(now, landingSite, landingSite)
-      .all();
-    archive = (archiveRecords || []).map((p: any) => ({
-      ship_id: p.ship_id,
-      event: p.destination_url === landingSite ? "ARRIVED" : "DEPARTED",
-      location_name: new URL(
-        p.destination_url === landingSite ? p.origin_url : p.destination_url,
-      ).hostname,
-      location_url:
-        p.destination_url === landingSite ? p.origin_url : p.destination_url,
-      timestamp: p.end_timestamp,
-    }));
+    archive = (archiveRecords || []).map((p: any) => {
+      const locationUrl =
+        p.destination_url === landingSite ? p.origin_url : p.destination_url;
+      return {
+        ship_id: p.ship_id,
+        event: p.destination_url === landingSite ? "ARRIVED" : "DEPARTED",
+        location_name:
+          warpNameMap.get(locationUrl) ?? new URL(locationUrl).hostname,
+        location_url: locationUrl,
+        timestamp:
+          p.destination_url === landingSite
+            ? p.end_timestamp
+            : p.start_timestamp,
+      };
+    });
   } catch (e) {
     console.error("Database fetch failed.", e);
   }
@@ -273,8 +306,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         <h3>Live Space Port Traffic</h3>
         <table
           id="traffic-table"
-          class="traffic-table"
-          style={traffic.length === 0 ? "display:none" : ""}
+          class={`traffic-table${traffic.length === 0 ? " hidden" : ""}`}
         >
           <thead>
             <tr>
@@ -294,6 +326,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                   data-event={item.type === "incoming" ? "ARRIVED" : "DEPARTED"}
                   data-location-name={item.planetName}
                   data-location-coords={item.coords.formatted}
+                  data-location-url={item.url}
                 >
                   <td class="ship-id">{item.ship}</td>
                   <td>
@@ -302,12 +335,20 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                       item.status === "PLAN_ACCEPTED"
                         ? "SCHEDULED"
                         : item.status === "PLAN_ACCEPTED"
-                          ? "IN TRANSIT"
+                          ? item.type === "incoming"
+                            ? "INBOUND"
+                            : "OUTBOUND"
                           : item.status}
                     </span>
                   </td>
                   <td class="location">
-                    {item.dir}: {item.planetName}
+                    <span class={item.dir === "to" ? "dir-to" : "dir-from"}>
+                      {item.dir === "to" ? "▲" : "▼"}
+                    </span>{" "}
+                    {item.dir}:{" "}
+                    <a class="planet-link" href={item.url}>
+                      {item.planetName}
+                    </a>
                     <br />
                     <code class="coord-sm">{item.coords.formatted}</code>
                   </td>
@@ -330,8 +371,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         </table>
         <p
           id="traffic-empty"
-          class="empty-msg"
-          style={traffic.length > 0 ? "display:none" : ""}
+          class={`empty-msg${traffic.length > 0 ? " hidden" : ""}`}
         >
           No active traffic in sector.
         </p>
@@ -341,8 +381,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         <h3>Recent Mission Archive</h3>
         <table
           id="archive-table"
-          class="archive-table"
-          style={archive.length === 0 ? "display:none" : ""}
+          class={`archive-table${archive.length === 0 ? " hidden" : ""}`}
         >
           <thead>
             <tr>
@@ -363,7 +402,15 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                     <span class="event-label">{item.event}</span>
                   </td>
                   <td class="location">
-                    {item.location_name}
+                    <span
+                      class={item.event === "DEPARTED" ? "dir-to" : "dir-from"}
+                    >
+                      {item.event === "DEPARTED" ? "▲" : "▼"}
+                    </span>{" "}
+                    {item.event === "DEPARTED" ? "to:" : "from:"}{" "}
+                    <a class="planet-link" href={item.location_url}>
+                      {item.location_name}
+                    </a>
                     <br />
                     <code class="coord-sm">
                       {calculateCoordinates(item.location_url).formatted}
@@ -377,12 +424,9 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
             }
           </tbody>
         </table>
-        <div
-          id="archive-controls"
-          style={archive.length <= 5 ? "display:none" : ""}
-        >
+        <div id="archive-controls" class={archive.length <= 5 ? "hidden" : ""}>
           <button id="archive-see-all" class="archive-see-all">See all</button>
-          <span id="archive-pagination" style="display:none">
+          <span id="archive-pagination" class="hidden">
             <button id="archive-prev" class="archive-nav" disabled
               >&lsaquo; Prev</button
             >
@@ -393,8 +437,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         </div>
         <p
           id="archive-empty"
-          class="empty-msg"
-          style={archive.length > 0 ? "display:none" : ""}
+          class={`empty-msg${archive.length > 0 ? " hidden" : ""}`}
         >
           Archive empty. Secure sector.
         </p>
@@ -584,31 +627,38 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         const totalPages = Math.ceil(rows.length / ARCHIVE_PAGE_SIZE);
         rows.forEach((r, i) => {
           if (!archiveExpanded) {
-            r.style.display = i < ARCHIVE_COLLAPSED ? "" : "none";
+            r.classList.toggle("archive-extra", i >= ARCHIVE_COLLAPSED);
           } else {
             const pageStart = archivePage * ARCHIVE_PAGE_SIZE;
-            r.style.display =
-              i >= pageStart && i < pageStart + ARCHIVE_PAGE_SIZE ? "" : "none";
+            r.classList.toggle(
+              "archive-extra",
+              i < pageStart || i >= pageStart + ARCHIVE_PAGE_SIZE,
+            );
           }
         });
         if (archiveExpanded) {
-          archiveSeeAll.style.display = "none";
-          archivePagination.style.display =
-            rows.length > ARCHIVE_PAGE_SIZE ? "" : "none";
+          archiveSeeAll.textContent = "See recent";
+          archiveSeeAll.classList.remove("hidden");
+          archivePagination.classList.toggle(
+            "hidden",
+            rows.length <= ARCHIVE_PAGE_SIZE,
+          );
           archivePrev.disabled = archivePage === 0;
           archiveNext.disabled = archivePage >= totalPages - 1;
           archivePageLabel.textContent = `${archivePage + 1} / ${totalPages}`;
         } else {
-          archiveSeeAll.style.display =
-            rows.length > ARCHIVE_COLLAPSED ? "" : "none";
-          archivePagination.style.display = "none";
+          archiveSeeAll.textContent = "See all";
+          archiveSeeAll.classList.remove("hidden");
+          archivePagination.classList.add("hidden");
         }
-        archiveControls.style.display =
-          rows.length > ARCHIVE_COLLAPSED ? "" : "none";
+        archiveControls.classList.toggle(
+          "hidden",
+          rows.length <= ARCHIVE_COLLAPSED,
+        );
       };
 
       archiveSeeAll.addEventListener("click", () => {
-        archiveExpanded = true;
+        archiveExpanded = !archiveExpanded;
         archivePage = 0;
         renderArchive();
       });
@@ -628,21 +678,29 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         const event = row.dataset.event || "DEPARTED";
         const locationName = row.dataset.locationName || "";
         const locationCoords = row.dataset.locationCoords || "";
+        const locationUrl = row.dataset.locationUrl || "";
         const shipId = row.dataset.shipId || "";
         const end = parseInt(row.querySelector(".eta")?.dataset.end || "0");
         const timestamp = new Date(end || Date.now()).toLocaleTimeString();
+        const isDeparted = event === "DEPARTED";
+        const dirSpan = isDeparted
+          ? `<span class="dir-to">▲</span> to:`
+          : `<span class="dir-from">▼</span> from:`;
+        const locationLink = locationUrl
+          ? `<a class="planet-link" href="${locationUrl}">${locationName}</a>`
+          : locationName;
 
         const archiveRow = document.createElement("tr");
         archiveRow.className = event.toLowerCase();
         archiveRow.innerHTML = `
                 <td class="ship-id">${shipId}</td>
                 <td><span class="event-label">${event}</span></td>
-                <td class="location">${locationName}<br/><code class="coord-sm">${locationCoords}</code></td>
+                <td class="location">${dirSpan} ${locationLink}<br/><code class="coord-sm">${locationCoords}</code></td>
                 <td class="timestamp">${timestamp}</td>`;
 
         archiveTbody.prepend(archiveRow);
-        archiveTable.style.display = "";
-        archiveEmpty.style.display = "none";
+        archiveTable.classList.remove("hidden");
+        archiveEmpty.classList.add("hidden");
 
         // Keep archive to last 20 entries
         while (archiveTbody.children.length > 20)
@@ -650,10 +708,12 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
 
         renderArchive();
 
+        if (window.removeShipFromScene)
+          window.removeShipFromScene(row.dataset.planId);
         row.remove();
         if (trafficTbody.children.length === 0) {
-          trafficTable.style.display = "none";
-          trafficEmpty.style.display = "";
+          trafficTable.classList.add("hidden");
+          trafficEmpty.classList.remove("hidden");
         }
       };
 
@@ -671,6 +731,47 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
       const trafficTbody = document.getElementById("traffic-tbody");
       const trafficEmpty = document.getElementById("traffic-empty");
 
+      const addIncomingRow = (plan, originCoordsFormatted, originName) => {
+        if (Date.now() >= plan.end_timestamp) return; // Already finished — SSR rendered it in archive
+        if (document.querySelector(`tr[data-plan-id="${plan.id}"]`)) return;
+        const originHostname = new URL(plan.origin_url).hostname;
+        const displayName = originName || originHostname;
+        const eta = new Date(plan.end_timestamp).toLocaleTimeString();
+        const filedAt = Date.now();
+        const tr = document.createElement("tr");
+        tr.className = "incoming status-transit";
+        tr.dataset.planId = plan.id;
+        tr.dataset.shipId = plan.ship_id;
+        tr.dataset.event = "ARRIVED";
+        tr.dataset.locationName = displayName;
+        tr.dataset.locationCoords = originCoordsFormatted;
+        tr.dataset.locationUrl = plan.origin_url;
+        tr.innerHTML = `
+                <td class="ship-id">${plan.ship_id}</td>
+                <td><span class="status-label">INBOUND</span></td>
+                <td class="location"><span class="dir-from">▼</span> from: <a class="planet-link" href="${plan.origin_url}">${displayName}</a><br/><code class="coord-sm">${originCoordsFormatted}</code></td>
+                <td class="eta" data-filed="${filedAt}" data-start="${plan.start_timestamp}" data-end="${plan.end_timestamp}" data-type="incoming">
+                    <div class="eta-time">Arr: ${eta}</div>
+                    <div class="eta-bar-track"><div class="eta-bar-fill"></div></div>
+                </td>`;
+        trafficTbody.appendChild(tr);
+        trafficEmpty.classList.add("hidden");
+        trafficTable.classList.remove("hidden");
+        if (window.addShipToScene && originCoordsFormatted) {
+          const [ox, oy, oz] = originCoordsFormatted.split(":").map(parseFloat);
+          window.addShipToScene({
+            type: "incoming",
+            originCoords: { x: ox, y: oy, z: oz },
+            destCoords: {
+              x: parseFloat(document.body.dataset.myX),
+              y: parseFloat(document.body.dataset.myY),
+              z: parseFloat(document.body.dataset.myZ),
+            },
+            rawPlan: plan,
+          });
+        }
+      };
+
       const addTrafficRow = (plan, filedAt) => {
         const destHostname = new URL(plan.destination_url).hostname;
         const eta = new Date(plan.end_timestamp).toLocaleTimeString();
@@ -679,19 +780,36 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         tr.dataset.planId = plan.id;
         tr.dataset.shipId = plan.ship_id;
         tr.dataset.event = "DEPARTED";
-        tr.dataset.locationName = new URL(plan.destination_url).hostname;
+        tr.dataset.locationName = currentTarget.name || destHostname;
         tr.dataset.locationCoords = currentTarget.formatted;
+        tr.dataset.locationUrl = plan.destination_url;
         tr.innerHTML = `
                 <td class="ship-id">${plan.ship_id}</td>
                 <td><span class="status-label">${plan.status}</span></td>
-                <td class="location">to: ${destHostname}<br/><code class="coord-sm">${currentTarget.formatted}</code></td>
+                <td class="location"><span class="dir-to">▲</span> to: <a class="planet-link" href="${plan.destination_url}">${currentTarget.name || destHostname}</a><br/><code class="coord-sm">${currentTarget.formatted}</code></td>
                 <td class="eta" data-filed="${filedAt}" data-start="${plan.start_timestamp}" data-end="${plan.end_timestamp}" data-type="outgoing">
                     <div class="eta-time">Arr: ${eta}</div>
                     <div class="eta-bar-track"><div class="eta-bar-fill"></div></div>
                 </td>`;
         trafficTbody.appendChild(tr);
-        trafficEmpty.style.display = "none";
-        trafficTable.style.display = "";
+        trafficEmpty.classList.add("hidden");
+        trafficTable.classList.remove("hidden");
+        if (window.addShipToScene) {
+          window.addShipToScene({
+            type: "outgoing",
+            originCoords: {
+              x: parseFloat(document.body.dataset.myX),
+              y: parseFloat(document.body.dataset.myY),
+              z: parseFloat(document.body.dataset.myZ),
+            },
+            destCoords: {
+              x: currentTarget.x,
+              y: currentTarget.y,
+              z: currentTarget.z,
+            },
+            rawPlan: plan,
+          });
+        }
         // Replay any events that arrived before this row existed
         (bufferedEvents.get(plan.id) ?? []).forEach(applyEvent);
         bufferedEvents.delete(plan.id);
@@ -807,7 +925,10 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
           "preparing";
         if ((STATUS_RANK[newKey] ?? 0) <= (STATUS_RANK[currentKey] ?? 0))
           return;
-        setRowStatus(row, newKey, isScheduled ? "SCHEDULED" : status);
+        const transitLabel = row.classList.contains("incoming")
+          ? "INBOUND"
+          : "OUTBOUND";
+        setRowStatus(row, newKey, isScheduled ? "SCHEDULED" : transitLabel);
       };
 
       (() => {
@@ -819,7 +940,23 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
           ws.onmessage = (e) => {
             const msg = JSON.parse(e.data);
             if (msg.type === "history") {
-              msg.data.forEach(applyEvent);
+              msg.data.forEach((event) => {
+                if (event.type === "INCOMING_REGISTERED" && event.plan) {
+                  addIncomingRow(
+                    event.plan,
+                    event.origin_coords_formatted ?? "",
+                    event.planet,
+                  );
+                } else {
+                  applyEvent(event);
+                }
+              });
+            } else if (msg.type === "INCOMING_REGISTERED" && msg.plan) {
+              addIncomingRow(
+                msg.plan,
+                msg.origin_coords_formatted ?? "",
+                msg.planet,
+              );
             } else {
               applyEvent(msg);
             }
@@ -830,7 +967,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
       })();
 
       // Progress bars for Live Space Port Traffic
-      const updateEtaBars = () => {
+      const updateEtaBars = (immediate = false) => {
         const now = Date.now();
         document.querySelectorAll(".eta[data-start]").forEach((td) => {
           const filed = parseInt(td.dataset.filed || td.dataset.start);
@@ -844,7 +981,11 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
           const row = td.closest("tr");
           if (!row) return;
           if (row.classList.contains("status-scheduled") && now >= start) {
-            setRowStatus(row, "transit", "IN TRANSIT");
+            setRowStatus(
+              row,
+              "transit",
+              row.classList.contains("incoming") ? "INBOUND" : "OUTBOUND",
+            );
           }
           if (
             now >= end &&
@@ -852,13 +993,17 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
             !row.dataset.arrivalScheduled
           ) {
             row.dataset.arrivalScheduled = "1";
-            setRowStatus(row, "arrived", "ARRIVED");
-            setTimeout(() => moveToArchive(row), ARRIVED_LINGER_MS);
+            if (immediate) {
+              moveToArchive(row);
+            } else {
+              setRowStatus(row, "arrived", "ARRIVED");
+              setTimeout(() => moveToArchive(row), ARRIVED_LINGER_MS);
+            }
           }
         });
       };
       renderArchive();
-      updateEtaBars();
+      updateEtaBars(true);
       setInterval(updateEtaBars, 1000);
     </script>
   </body>

@@ -410,8 +410,8 @@ async function handleInitiate(
   const plan: TravelPlan = {
     id: crypto.randomUUID(),
     ship_id: data.ship_id,
-    origin_url: localPlanet.landing_site,
-    destination_url: data.destination_url,
+    origin_url: localPlanet.landing_site.replace(/\/$/, ""),
+    destination_url: data.destination_url.replace(/\/$/, ""),
     start_timestamp: startTimestamp,
     end_timestamp: endTimestamp,
     status: "PREPARING",
@@ -551,11 +551,15 @@ async function handleRegister(
       )
       .run();
 
+    const fmt = (n: number) => n.toFixed(1);
+    const originCoordsFormatted = `${fmt(originCoords.x)}:${fmt(originCoords.y)}:${fmt(originCoords.z)}`;
     await broadcastEvent(TRAFFIC_CONTROL, {
       type: "INCOMING_REGISTERED",
       planet: localPlanet.name,
       ship_id: plan.ship_id,
       plan_id: plan.id,
+      plan,
+      origin_coords_formatted: originCoordsFormatted,
     });
   }
 

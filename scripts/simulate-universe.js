@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const NUM_PLANETS = 10;
 const BASE_PORT = 3000;
 const BASE_INSPECTOR_PORT = 19229;
+const OPEN_BROWSER = process.argv.includes("--open");
 
 const allPlanets = Array.from({ length: NUM_PLANETS }, (_, i) => ({
   name: `Towel ${i + 1}`,
@@ -129,14 +130,19 @@ const run = async () => {
       await startPlanet(planet);
     }
 
-    console.log("All planets are ready! Opening browser windows...");
-    const urlsToOpen = [
-      allPlanets[0].url, // First planet landing site
-      ...allPlanets.map((p) => `${p.url}/control`), // All planets control centers
-    ];
-    const urls = urlsToOpen.join(" ");
-    // On macOS, 'open' with multiple URLs opens them in tabs
-    execSync(`open ${urls}`);
+    if (OPEN_BROWSER) {
+      console.log("All planets are ready! Opening browser windows...");
+      const urlsToOpen = [
+        allPlanets[0].url, // First planet landing site
+        ...allPlanets.map((p) => `${p.url}/control`), // All planets control centers
+      ];
+      const urls = urlsToOpen.join(" ");
+      // On macOS, 'open' with multiple URLs opens them in tabs
+      execSync(`open ${urls}`);
+    } else {
+      console.log(`All planets are ready! (pass --open to launch browser)`);
+      allPlanets.forEach((p) => console.log(`  ${p.name}: ${p.url}`));
+    }
 
     console.log("Simulation running. Press Ctrl+C to stop.");
   } catch (e) {

@@ -18,6 +18,8 @@
   --map-bg: #0b0e14;
   --map-grid: rgba(255, 255, 255, 0.05);
   --coord-bg: rgba(255, 255, 255, 0.05);
+  --color-outbound: #e67e22;
+  --color-inbound: #3498db;
 }
 
 @media (prefers-color-scheme: light) {
@@ -574,26 +576,66 @@ tr.status-arrived .eta-bar-fill {
   background: #2ecc71;
 }
 
-/* In Transit */
-tr.status-transit .status-label {
+/* Outbound (departing from this planet) */
+tr.outgoing.status-transit .status-label,
+tr.preparation.status-transit .status-label {
+  background: rgba(230, 126, 34, 0.15);
+  color: var(--color-outbound);
+  border: 1px solid rgba(230, 126, 34, 0.3);
+}
+tr.outgoing.status-transit .eta-bar-fill,
+tr.preparation.status-transit .eta-bar-fill {
+  background: var(--color-outbound);
+}
+
+/* Inbound (arriving at this planet) */
+tr.incoming.status-transit .status-label {
   background: rgba(52, 152, 219, 0.15);
-  color: #3498db;
+  color: var(--color-inbound);
   border: 1px solid rgba(52, 152, 219, 0.3);
 }
-tr.status-transit .eta-bar-fill {
-  background: #3498db;
+tr.incoming.status-transit .eta-bar-fill {
+  background: var(--color-inbound);
+}
+
+/* Direction arrows in location cells */
+.dir-to {
+  color: var(--color-outbound);
+}
+
+.dir-from {
+  color: var(--color-inbound);
+}
+
+/* Planet links in traffic and archive tables */
+.planet-link {
+  color: var(--warp-accent);
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.planet-link:hover {
+  color: #fff;
+  text-shadow: 0 0 10px var(--warp-accent);
+}
+
+@media (prefers-color-scheme: light) {
+  .planet-link:hover {
+    color: var(--warp-accent);
+    text-shadow: none;
+  }
 }
 
 /* Archive event labels */
 .departed .event-label {
   background: rgba(230, 126, 34, 0.15);
-  color: #e67e22;
+  color: var(--color-outbound);
   border: 1px solid rgba(230, 126, 34, 0.3);
 }
 
 .arrived .event-label {
   background: rgba(52, 152, 219, 0.15);
-  color: #3498db;
+  color: var(--color-inbound);
   border: 1px solid rgba(52, 152, 219, 0.3);
 }
 
@@ -789,6 +831,18 @@ tr.status-transit .eta-bar-fill {
   font-size: 0.75rem;
   color: var(--warp-text-dim);
   font-family: "Courier New", monospace;
+}
+
+.archive-extra {
+  display: none;
+}
+
+.traffic-table.hidden,
+.archive-table.hidden,
+.empty-msg.hidden,
+#archive-controls.hidden,
+#archive-pagination.hidden {
+  display: none;
 }
 
 @media (max-width: 600px) {
