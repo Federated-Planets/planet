@@ -110,22 +110,13 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   if (action === "neighbors") {
-    const urls = WARP_LINKS.map((l) => l.url);
-    if (!DB || urls.length === 0) {
+    if (!DB || WARP_LINKS.length === 0) {
       return new Response(JSON.stringify({ neighbors: [] }), { status: 200 });
     }
-    const placeholders = urls.map(() => "?").join(",");
-    const rows = await DB.prepare(
-      `SELECT planet_url, name, space_port_url FROM traffic_controllers
-       WHERE planet_url IN (${placeholders}) AND space_port_url IS NOT NULL AND space_port_url != ''`,
-    )
-      .bind(...urls)
-      .all();
-    const neighbors = (rows.results || []).map((r: any) => ({
-      name: r.name,
-      landing_site: r.planet_url,
-      space_port: r.space_port_url,
-    }));
+    const results = await Promise.all(
+      WARP_LINKS.map((l) => discoverSpacePort(l.url, DB)),
+    );
+    const neighbors = results.filter((n): n is PlanetManifest => n !== null);
     return new Response(JSON.stringify({ neighbors }), { status: 200 });
   }
 
@@ -325,6 +316,10 @@ async function handleInitiate(
     (n): n is PlanetManifest => n !== null,
   );
 
+  console.log(
+    `[${localPlanet.name}] Origin neighbors checked (${WARP_LINKS.length} links, ${originNeighbors.length} with space port): ${WARP_LINKS.map((l, i) => `${l.name ?? l.url} → ${neighborResults[i] ? "✓" : "✗"}`).join(", ")}`,
+  );
+
   // Fetch destination's known neighbors so we can elect TCs from both sides
   let destNeighbors: PlanetManifest[] = [];
   try {
@@ -335,6 +330,9 @@ async function handleInitiate(
       const json: any = await res.json();
       destNeighbors = (json.neighbors || []).filter(
         (n: any): n is PlanetManifest => n.landing_site && n.space_port,
+      );
+      console.log(
+        `[${localPlanet.name}] Destination neighbors from ${destManifest.name} (${destNeighbors.length} with space port): ${destNeighbors.map((n) => n.name ?? n.landing_site).join(", ") || "(none)"}`,
       );
     }
   } catch (e: any) {
@@ -393,6 +391,10 @@ async function handleInitiate(
 
   // Combine: mandatory first, then elected (already disjoint, no further dedup needed)
   const electedTCs = [...mandatoryTCs, ...originElected, ...destElected];
+
+  console.log(
+    `[${localPlanet.name}] TC election: mandatory=[${mandatoryTCs.map((t) => t.name ?? t.landing_site).join(", ")}] originPool=${originPool.length} destPool=${destPool.length} elected=[${electedTCs.map((t) => t.name ?? t.landing_site).join(", ")}] (${electedTCs.length}/${MIN_CONTROLLERS} required)`,
+  );
 
   if (electedTCs.length < MIN_CONTROLLERS) {
     return new Response(
@@ -595,7 +597,10 @@ async function handleCommit(
       await ConsensusEngine.savePlanState(KV, existing);
 
       // Register with destination synchronously — must succeed before committing locally
-      const destManifest = await discoverSpacePort(existing.destination_url, DB);
+      const destManifest = await discoverSpacePort(
+        existing.destination_url,
+        DB,
+      );
       if (!destManifest?.space_port) {
         return new Response(
           JSON.stringify({ error: "Destination space port not found" }),
