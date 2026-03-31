@@ -692,6 +692,9 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         trafficTbody.appendChild(tr);
         trafficEmpty.style.display = "none";
         trafficTable.style.display = "";
+        // Replay any events that arrived before this row existed
+        (bufferedEvents.get(plan.id) ?? []).forEach(applyEvent);
+        bufferedEvents.delete(plan.id);
         document
           .querySelector(".space-port")
           .scrollIntoView({ behavior: "smooth", block: "start" });
@@ -767,22 +770,44 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         QUORUM_REACHED: "IN TRANSIT",
       };
 
+      const STATUS_RANK = {
+        preparing: 0,
+        scheduled: 1,
+        transit: 2,
+        arrived: 3,
+      };
+
+      // Events keyed by plan_id, for rows that don't exist in DOM yet
+      const bufferedEvents = new Map();
+
       const applyEvent = (event) => {
         const status = EVENT_STATUS[event.type];
         if (!status || !event.plan_id) return;
         const row = document.querySelector(
           `tr[data-plan-id="${event.plan_id}"]`,
         );
-        if (!row) return;
+        if (!row) {
+          // Row not yet in DOM — buffer so addTrafficRow can replay it
+          const buf = bufferedEvents.get(event.plan_id) ?? [];
+          buf.push(event);
+          bufferedEvents.set(event.plan_id, buf);
+          return;
+        }
         const startTime = parseInt(
           row.querySelector(".eta")?.dataset.start || "0",
         );
         const isScheduled = status === "IN TRANSIT" && Date.now() < startTime;
-        setRowStatus(
-          row,
-          isScheduled ? "scheduled" : status.toLowerCase(),
-          isScheduled ? "SCHEDULED" : status,
-        );
+        const newKey = isScheduled
+          ? "scheduled"
+          : status === "IN TRANSIT"
+            ? "transit"
+            : "preparing";
+        const currentKey =
+          [...row.classList].find((c) => c.startsWith("status-"))?.slice(7) ??
+          "preparing";
+        if ((STATUS_RANK[newKey] ?? 0) <= (STATUS_RANK[currentKey] ?? 0))
+          return;
+        setRowStatus(row, newKey, isScheduled ? "SCHEDULED" : status);
       };
 
       (() => {
