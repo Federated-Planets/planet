@@ -48,11 +48,13 @@ const calculateCoordinates = (url: string) => {
 // Simulation Overrides
 const simName = getSimVar("PUBLIC_SIM_PLANET_NAME");
 const simUrl = getSimVar("PUBLIC_SIM_LANDING_SITE");
+const simDescription = getSimVar("PUBLIC_SIM_PLANET_DESCRIPTION");
 
 const planetName = simName || "Towel 42 Space Outpost";
 const landingSite = (simUrl || Astro.url.origin).replace(/\/$/, "");
 
 const planetDescription =
+  simDescription ||
   "A remote outpost in the Federated Planets. A quiet spot for deep-space weary travelers. Don't panic, but bring a towel.";
 
 const myCoords = calculateCoordinates(landingSite);

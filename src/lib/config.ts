@@ -3,21 +3,12 @@ export const DEFAULT_WARP_LINKS = [
     name: "Federation Prime",
     url: "https://prime.federatedplanets.com/",
   },
-  { name: "Aether Reach", url: "https://aether.reach.io" },
-  { name: "Iron Star Forge", url: "https://ironstar.forge" },
-  { name: "Neon Nebula", url: "https://neon.nebula.web" },
-  { name: "Crystal Spire", url: "https://crystal.spire.planet" },
-  { name: "Rust Belt Outpost", url: "https://rustbelt.outpost.space" },
-  { name: "Nova Prime", url: "https://nova.prime.core" },
-  { name: "Solaris Gate", url: "https://solaris.gate.link" },
-  { name: "Void Runner Base", url: "https://void.runner.base" },
-  { name: "Starlight Bazaar", url: "https://starlight.bazaar.trade" },
-  { name: "Obsidian Moon", url: "https://obsidian.moon.base" },
-  { name: "Elysium Station", url: "https://elysium.station.xyz" },
-  { name: "Titan's Grip", url: "https://titans.grip.mining" },
-  { name: "Frozen Peak", url: "https://frozen.peak.outpost" },
-  { name: "Gale Force V", url: "https://galeforce.five.storm" },
-  { name: "The Monolith", url: "https://the.monolith.mystery" },
+  { name: "Waystation Meridian", url: "https://waystation.federatedplanets.com/" },
+  { name: "The Interchange", url: "https://interchange.federatedplanets.com/" },
+  { name: "Port Cassini", url: "https://port-cassini.federatedplanets.com/" },
+  { name: "Terminus Reach", url: "https://terminus.federatedplanets.com/" },
+  { name: "Driftyard Seven", url: "https://driftyard.federatedplanets.com/" },
+  { name: "Towel 42 Space Outpost", url: "https://towel-42.federatedplanets.com/" },
   { name: "Explorers Outpost", url: "https://www.nasa.gov/" },
 ];
 
@@ -40,13 +31,17 @@ const getSimVar = (name: string): string | undefined => {
 };
 
 export const getWarpLinks = () => {
+  const landingSite = getSimVar("PUBLIC_SIM_LANDING_SITE")?.replace(/\/$/, "");
   try {
     const simLinks = getSimVar("PUBLIC_SIM_WARP_LINKS");
     if (simLinks) {
       return JSON.parse(simLinks);
     }
   } catch (e) {}
-  return DEFAULT_WARP_LINKS;
+  if (!landingSite) return DEFAULT_WARP_LINKS;
+  return DEFAULT_WARP_LINKS.filter(
+    (l) => l.url.replace(/\/$/, "") !== landingSite,
+  );
 };
 
 export const WARP_LINKS = getWarpLinks();
