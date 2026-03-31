@@ -8,11 +8,15 @@ const initThree = () => {
   const container = document.getElementById("three-container");
   if (!container) return;
 
+  const rootStyle = getComputedStyle(document.documentElement);
+  const colorOutbound =
+    rootStyle.getPropertyValue("--color-outbound").trim() || "#e67e22";
+  const colorInbound =
+    rootStyle.getPropertyValue("--color-inbound").trim() || "#3498db";
+
   scene = new THREE.Scene();
   scene.background = new THREE.Color(
-    getComputedStyle(document.documentElement)
-      .getPropertyValue("--map-bg")
-      .trim() || "#0b0e14",
+    rootStyle.getPropertyValue("--map-bg").trim() || "#0b0e14",
   );
 
   const width = container.clientWidth;
@@ -86,6 +90,9 @@ const initThree = () => {
     planetPoints.push(line);
   });
 
+  // planId → { mesh, line } for removal on arrival
+  const shipObjects = new Map();
+
   // Add Active Ships from Traffic
   const shipsData = JSON.parse(container.dataset.ships || "[]");
   shipsData.forEach((ship) => {
@@ -102,8 +109,10 @@ const initThree = () => {
       new THREE.Vector3(dx, dy, dz),
     ];
     const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
+    const shipLineColor =
+      ship.type === "incoming" ? colorInbound : colorOutbound;
     const lineMat = new THREE.LineBasicMaterial({
-      color: 0x4fc3f7,
+      color: new THREE.Color(shipLineColor),
       transparent: true,
       opacity: 0.7,
     });
@@ -128,6 +137,9 @@ const initThree = () => {
 
     planetsGroup.add(shipMesh);
     shipPoints.push(shipMesh);
+
+    if (ship.rawPlan.id)
+      shipObjects.set(ship.rawPlan.id, { mesh: shipMesh, line: travelLine });
   });
 
   const animate = () => {
@@ -162,6 +174,59 @@ const initThree = () => {
   };
 
   animate();
+
+  window.addShipToScene = (ship) => {
+    const ox = ship.originCoords.x - 500;
+    const oy = ship.originCoords.y - 500;
+    const oz = ship.originCoords.z - 500;
+    const dx = ship.destCoords.x - 500;
+    const dy = ship.destCoords.y - 500;
+    const dz = ship.destCoords.z - 500;
+
+    const linePoints = [
+      new THREE.Vector3(ox, oy, oz),
+      new THREE.Vector3(dx, dy, dz),
+    ];
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
+    const shipLineColor =
+      ship.type === "incoming" ? colorInbound : colorOutbound;
+    const lineMat = new THREE.LineBasicMaterial({
+      color: new THREE.Color(shipLineColor),
+      transparent: true,
+      opacity: 0.7,
+    });
+    const travelLine = new THREE.Line(lineGeo, lineMat);
+    planetsGroup.add(travelLine);
+
+    const shipGeo = new THREE.TetrahedronGeometry(10);
+    const shipMat = new THREE.MeshBasicMaterial({ color: 0xf1c40f });
+    const shipMesh = new THREE.Mesh(shipGeo, shipMat);
+    shipMesh.userData = {
+      start: ship.rawPlan.start_timestamp,
+      end: ship.rawPlan.end_timestamp,
+      ox,
+      oy,
+      oz,
+      dx,
+      dy,
+      dz,
+    };
+    planetsGroup.add(shipMesh);
+    shipPoints.push(shipMesh);
+
+    if (ship.rawPlan.id)
+      shipObjects.set(ship.rawPlan.id, { mesh: shipMesh, line: travelLine });
+  };
+
+  window.removeShipFromScene = (planId) => {
+    const objs = shipObjects.get(planId);
+    if (!objs) return;
+    planetsGroup.remove(objs.mesh);
+    planetsGroup.remove(objs.line);
+    const idx = shipPoints.indexOf(objs.mesh);
+    if (idx !== -1) shipPoints.splice(idx, 1);
+    shipObjects.delete(planId);
+  };
 
   window.addEventListener("resize", () => {
     const width = container.clientWidth;
