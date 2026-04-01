@@ -1,3 +1,8 @@
+// Baked in at scaffold time by `npm create planet`
+export const PLANET_NAME = "Towel 42 Space Outpost";
+export const PLANET_DESCRIPTION =
+  "A remote outpost in the Federated Planets. A quiet spot for deep-space weary travelers. Don't panic, but bring a towel.";
+
 export const DEFAULT_WARP_LINKS = [
   {
     name: "Federation Prime",

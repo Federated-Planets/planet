@@ -5,7 +5,7 @@ import { TravelCalculator, type PlanetManifest } from "../../../lib/travel";
 import { CryptoCore } from "../../../lib/crypto";
 import { PlanetIdentity } from "../../../lib/identity";
 import { ConsensusEngine, type TravelPlan } from "../../../lib/consensus";
-import { WARP_LINKS } from "../../../lib/config";
+import { WARP_LINKS, PLANET_NAME } from "../../../lib/config";
 import { env } from "cloudflare:workers";
 
 const InitiateSchema = z.object({
@@ -54,7 +54,7 @@ const getLocalPlanetInfo = (currentUrl: string) => {
   const landingSite = simUrl || origin;
 
   return {
-    name: simName || "Towel 42 Space Outpost",
+    name: simName || PLANET_NAME,
     landing_site: landingSite,
     space_port: `${landingSite}/api/v1/port`,
   };

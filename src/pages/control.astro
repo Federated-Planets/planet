@@ -1,5 +1,6 @@
 ---
-const simName = import.meta.env.PUBLIC_SIM_PLANET_NAME || "Towel 42";
+import { PLANET_NAME } from "../lib/config";
+const simName = import.meta.env.PUBLIC_SIM_PLANET_NAME || PLANET_NAME;
 ---
 
 <!doctype html>

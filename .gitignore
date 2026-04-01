@@ -1,6 +1,7 @@
 # Build artifacts
 dist/
 .astro/
+create-planet/template/
 
 # Dependencies
 node_modules/

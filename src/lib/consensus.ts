@@ -1,6 +1,7 @@
 import { CryptoCore } from "./crypto";
 import type { PlanetManifest } from "./travel";
 import { env as cloudflareEnv } from "cloudflare:workers";
+import { PLANET_NAME } from "./config";
 
 // Robust helper to get simulation variables from any available environment source
 const getSimVar = (name: string): string | undefined => {
@@ -44,7 +45,7 @@ export class ConsensusEngine {
     action: "prepare" | "commit",
     controllers: PlanetManifest[],
   ) {
-    const localName = getSimVar("PUBLIC_SIM_PLANET_NAME") || "Local Planet";
+    const localName = getSimVar("PUBLIC_SIM_PLANET_NAME") || PLANET_NAME;
     console.log(
       `[${localName}] Broadcasting ${action} for plan ${plan.id} to ${controllers.length} controllers`,
     );
@@ -92,7 +93,7 @@ export class ConsensusEngine {
    * N = 3f + 1, we need 2f + 1 signatures
    */
   static hasQuorum(plan: TravelPlan): boolean {
-    const localName = getSimVar("PUBLIC_SIM_PLANET_NAME") || "Local Planet";
+    const localName = getSimVar("PUBLIC_SIM_PLANET_NAME") || PLANET_NAME;
     const n = plan.traffic_controllers.length;
     const f = Math.floor((n - 1) / 3);
     const required = 2 * f + 1;

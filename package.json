@@ -13,7 +13,10 @@
     "simulate": "node scripts/simulate-universe.js",
     "test": "npm run build && vitest run",
     "test:protocol": "npm run build && vitest run src/tests/protocol.test.ts",
-    "test:warp-links": "npm run build && vitest run src/tests/warp-links.test.ts"
+    "test:warp-links": "npm run build && vitest run src/tests/warp-links.test.ts",
+    "release": "npm version patch -m \"Release v%s\"",
+    "version": "node -e \"const fs=require('fs'),p=JSON.parse(fs.readFileSync('create-planet/package.json'));p.version=process.env.npm_new_version;fs.writeFileSync('create-planet/package.json',JSON.stringify(p,null,2)+'\\n')\" && git add create-planet/package.json",
+    "postversion": "git push && git push --tags"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.1.4",

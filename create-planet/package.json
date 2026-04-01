@@ -1,0 +1,20 @@
+{
+  "name": "create-planet",
+  "version": "1.0.0",
+  "description": "Scaffold a new Federated Planets planet",
+  "type": "module",
+  "bin": {
+    "create-planet": "index.js"
+  },
+  "files": [
+    "index.js",
+    "template/"
+  ],
+  "scripts": {
+    "sync-template": "node scripts/sync-template.js",
+    "prepublishOnly": "node scripts/sync-template.js"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.9.0"
+  }
+}
