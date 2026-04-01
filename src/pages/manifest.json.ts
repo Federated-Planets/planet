@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
+import { PLANET_NAME, PLANET_DESCRIPTION } from "../lib/config";
 
 export const GET: APIRoute = async ({ request }) => {
   // Robust helper to get simulation variables
@@ -22,9 +23,8 @@ export const GET: APIRoute = async ({ request }) => {
   const landingSite = simUrl || new URL(request.url).origin;
 
   const manifest: any = {
-    name: simName || "Towel 42 Space Outpost",
-    description:
-      "A remote outpost in the Federated Planets. A quiet spot for deep-space weary travelers. Don't panic, but bring a towel.",
+    name: simName || PLANET_NAME,
+    description: PLANET_DESCRIPTION,
     landing_site: landingSite,
     space_port: `${landingSite}/api/v1/port`,
   };
