@@ -4,7 +4,7 @@
  * Run before publishing: npm run sync-template
  * Also runs automatically via prepublishOnly.
  */
-import { cpSync, rmSync, existsSync, readdirSync, statSync, mkdirSync } from "fs";
+import { cpSync, rmSync, existsSync, readdirSync, statSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -47,3 +47,13 @@ if (existsSync(DEST)) {
 
 copyDir(SRC, DEST);
 console.log("Template synced to create-planet/template/");
+
+// Sync version from planet's package.json
+const planetPkg = JSON.parse(readFileSync(path.join(SRC, "package.json"), "utf-8"));
+const createPkgPath = path.join(__dirname, "../package.json");
+const createPkg = JSON.parse(readFileSync(createPkgPath, "utf-8"));
+if (createPkg.version !== planetPkg.version) {
+  createPkg.version = planetPkg.version;
+  writeFileSync(createPkgPath, JSON.stringify(createPkg, null, 2) + "\n");
+  console.log(`Version synced to ${planetPkg.version}`);
+}
