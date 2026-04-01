@@ -1,0 +1,28 @@
+name: Publish create-planet to npm
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install create-planet dependencies
+        run: npm install
+        working-directory: create-planet
+
+      - name: Sync template and publish
+        run: npm publish --provenance --access public
+        working-directory: create-planet
