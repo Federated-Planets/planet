@@ -6,20 +6,6 @@
     "directory": "dist/client",
     "binding": "STATIC_ASSETS",
   },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "planet_db",
-      "database_id": "your-d1-id-here",
-      "migrations_dir": "migrations",
-    },
-  ],
-  "kv_namespaces": [
-    {
-      "binding": "KV",
-      "id": "your-kv-id-here",
-    },
-  ],
   "durable_objects": {
     "bindings": [
       {
@@ -31,11 +17,12 @@
   "vars": {
     "WARP_MS_PER_FY": "10000",
     "DEPARTURE_BUFFER_MS": "5000",
+    "ALLOW_TEST_SHUTTLE_BYPASS": "true",
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_classes": ["TrafficControl"],
+      "new_sqlite_classes": ["TrafficControl"],
     },
   ],
 }

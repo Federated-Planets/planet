@@ -15,8 +15,7 @@ Run these commands one after another to make sure they match permissions.
 
 - **Framework:** Astro (SSR mode)
 - **Runtime:** Cloudflare Workers (Note: This is a Worker project, NOT a Pages project)
-- **Database:** Cloudflare D1 (Local state, Mission Archive, Traffic Logs)
-- **State/Cache:** Cloudflare KV (Cryptographic keys, Distributed Ledger cache)
+- **Storage:** Cloudflare Durable Objects with SQLite (Local state, Mission Archive, Traffic Logs, Cryptographic keys, Consensus state)
 - **Validation:** Zod
 - **Hashing:** MD5 (via `md5` package)
 - **Cryptography:** Web Crypto API (Ed25519 signatures)
@@ -28,18 +27,19 @@ Run these commands one after another to make sure they match permissions.
 - Add `space_port` field to `public/manifest.json`.
 - Endpoint: `https://<domain>/api/v1/port`
 
-### 2.2 Database Schema (D1)
+### 2.2 Database Schema (Durable Object SQLite)
 
-Create `schema.sql`:
+Tables are created automatically in the TrafficControl Durable Object constructor:
 
-- `travel_plans`: `id`, `ship_id`, `origin_url`, `destination_url`, `start_timestamp`, `end_timestamp`, `status` (PREPARING, TRANSIT, ARRIVED), `signatures` (JSON array).
-- `mission_archive`: `id`, `ship_id`, `event` (ARRIVED, DEPARTED), `location_name`, `location_url`, `timestamp`.
+- `travel_plans`: `id`, `ship_id`, `origin_url`, `destination_url`, `start_timestamp`, `end_timestamp`, `status` (PREPARING, PLAN_ACCEPTED), `signatures` (JSON).
 - `traffic_controllers`: Cache of known neighbor manifests and their `space_port` status.
+- `identity`: Ed25519 key pair storage.
+- `consensus_plans`: In-flight consensus plan state with expiration.
 
 ### 2.3 Cryptography Utility
 
 - Implement `crypto.ts` to manage the planet's identity.
-- Generate and store an Ed25519 KeyPair in KV if it doesn't exist.
+- Generate and store an Ed25519 KeyPair in Durable Object SQLite if it doesn't exist.
 - Methods for `sign(data)` and `verify(data, signature, publicKey)`.
 
 ## 3. Phase 2: Core Protocol Logic
@@ -70,7 +70,7 @@ Create `schema.sql`:
 
 ### 4.1 Dynamic Star Map
 
-- Update `index.astro` to fetch live traffic from D1.
+- Update `index.astro` to fetch live traffic from the Durable Object.
 - Pass real coordinates from the database to the ThreeJS map.
 
 ### 4.2 Flight Deck

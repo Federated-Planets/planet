@@ -34,16 +34,6 @@ const startPlanet = (planet) => {
   const { id, name, url, port } = planet;
   const inspectorPort = BASE_INSPECTOR_PORT + id;
 
-  // Initialize Database first
-  console.log(`[${name}] Initializing database...`);
-  execSync(
-    `npx wrangler d1 execute planet_db --file=schema.sql -c wrangler.dev.jsonc --local --persist-to=.wrangler/state/planet-${id}`,
-    {
-      cwd: path.join(__dirname, ".."),
-      stdio: "inherit",
-    },
-  );
-
   const env = {
     ...process.env,
     PUBLIC_SIM_PLANET_NAME: name,

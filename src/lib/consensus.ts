@@ -2,6 +2,7 @@ import { CryptoCore } from "./crypto";
 import type { PlanetManifest } from "./travel";
 import { env as cloudflareEnv } from "cloudflare:workers";
 import { PLANET_NAME } from "./config";
+import { doStorage } from "./do-storage";
 
 // Robust helper to get simulation variables from any available environment source
 const getSimVar = (name: string): string | undefined => {
@@ -34,6 +35,7 @@ export interface TravelPlan {
   status: "PREPARING" | "PLAN_ACCEPTED";
   traffic_controllers: string[]; // List of landing site URLs elected
   signatures: Record<string, string>; // planet_url -> signature
+  origin_lists_dest?: boolean; // Whether origin declared destination as a neighbor (set at initiation)
 }
 
 export class ConsensusEngine {
@@ -106,22 +108,26 @@ export class ConsensusEngine {
   }
 
   /**
-   * Saves plan state to KV for active consensus tracking
+   * Saves plan state to DO SQLite for active consensus tracking
    */
-  static async savePlanState(KV: KVNamespace, plan: TravelPlan) {
-    await KV.put(`consensus_plan_${plan.id}`, JSON.stringify(plan), {
-      expirationTtl: 3600,
+  static async savePlanState(
+    TRAFFIC_CONTROL: DurableObjectNamespace,
+    plan: TravelPlan,
+  ) {
+    await doStorage(TRAFFIC_CONTROL, "savePlan", {
+      planId: plan.id,
+      data: JSON.stringify(plan),
     });
   }
 
   /**
-   * Retrieves plan state from KV
+   * Retrieves plan state from DO SQLite
    */
   static async getPlanState(
-    KV: KVNamespace,
+    TRAFFIC_CONTROL: DurableObjectNamespace,
     planId: string,
   ): Promise<TravelPlan | null> {
-    const data = await KV.get(`consensus_plan_${planId}`);
-    return data ? JSON.parse(data) : null;
+    const result: any = await doStorage(TRAFFIC_CONTROL, "getPlan", { planId });
+    return result.data ? JSON.parse(result.data) : null;
   }
 }

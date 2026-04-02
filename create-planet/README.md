@@ -16,7 +16,7 @@ The interactive setup will ask you for:
 - **Warp links** — URLs of neighboring planets to link to (leave empty for defaults)
 - **Cloudflare worker name** — the name of your Worker on Cloudflare
 
-It will then automatically create the required Cloudflare resources (KV namespace and D1 database) and generate a ready-to-deploy `wrangler.jsonc`.
+It will then generate a ready-to-deploy `wrangler.jsonc` configured with a Durable Object for storage.
 
 ## Prerequisites
 
@@ -45,8 +45,7 @@ my-planet/
 │   └── lib/            # Protocol logic (consensus, crypto, travel)
 ├── public/             # CSS, 3D star map (Three.js), static assets
 ├── scripts/            # Dev utilities (simulate universe, inject DO exports)
-├── schema.sql          # D1 database schema
-├── wrangler.jsonc      # Generated with your worker name, KV ID, D1 ID
+├── wrangler.jsonc      # Generated with your worker name and Durable Object config
 ├── wrangler.dev.jsonc  # Local development config
 └── package.json
 ```

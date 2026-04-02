@@ -5,22 +5,20 @@ The following diagram illustrates the lifecycle of a travel transaction using th
 ```mermaid
 sequenceDiagram
     participant Traveler as 🚀 Ship Browser
-    participant DO as TrafficControl DO
+    participant DO as TrafficControl DO (SQLite)
     participant Origin as 🌍 Origin Space Port
     participant Dest as 🌍 Destination Space Port
-    participant KV as KV Store
-    participant D1 as D1 Database
     participant TCs as 🌐 Elected Traffic Controllers (3f+1)
 
     Note over Traveler, Dest: PHASE 1: INITIATION & SORTITION
     Traveler->>Origin: POST /initiate (Destination, ShipID)
     par Parallel discovery
-        Origin->>D1: Lookup cached manifests for origin neighbors
-        D1-->>Origin: Origin neighbor manifests
+        Origin->>DO: Lookup cached manifests for origin neighbors
+        DO-->>Origin: Origin neighbor manifests
         opt Cache miss
             Origin->>Dest: Fetch space-manifest link + manifest JSON
             Dest-->>Origin: PlanetManifest (name, landing_site, space_port)
-            Origin->>D1: Store manifest in traffic_controllers cache
+            Origin->>DO: Store manifest in traffic_controllers cache
         end
     and
         Origin->>Dest: GET ?action=neighbors
@@ -30,22 +28,22 @@ sequenceDiagram
     Note over Origin: Mandatory TCs: Origin + Destination
     Note over Origin: Elected TCs: half from origin neighbors, half from dest neighbors
     Origin->>Origin: Elect TCs (seed-based sortition, dedup)
-    Origin->>KV: Read Ed25519 identity keys (identity_public/private)
-    KV-->>Origin: Key pair
+    Origin->>DO: Read Ed25519 identity keys
+    DO-->>Origin: Key pair
     Origin->>Origin: Sign Plan (Ed25519)
-    Origin->>KV: Save consensus plan state (consensus_plan_{id})
+    Origin->>DO: Save consensus plan state
     par Fire-and-forget
         Origin-->>DO: INITIATE_TRAVEL event
     and Parallel POST ×N
         Origin->>TCs: PRE-PREPARE (Signed Plan)
     end
 
-    Note over TCs, KV: PHASE 2: CONSENSUS (PBFT)
+    Note over TCs, DO: PHASE 2: CONSENSUS (PBFT)
     loop Each Traffic Controller
         TCs->>TCs: Verify Plan integrity (coordinates & travel time)
-        TCs->>KV: Read own identity keys
+        TCs->>DO: Read own identity keys
         TCs->>TCs: Sign Plan
-        TCs->>KV: Merge signatures into consensus plan state
+        TCs->>DO: Merge signatures into consensus plan state
         par Fire-and-forget
             TCs-->>DO: PREPARE_PLAN event
         and Parallel POST ×N
@@ -53,17 +51,17 @@ sequenceDiagram
         end
     end
 
-    Note over Origin, D1: PHASE 3: RECORDING & TRANSIT
-    Origin->>KV: Read accumulated signatures (consensus_plan_{id})
+    Note over Origin, DO: PHASE 3: RECORDING & TRANSIT
+    Origin->>DO: Read accumulated signatures
     Origin->>Origin: Check quorum (2f+1 signatures reached)
     Origin->>Dest: POST ?action=register (Approved Plan)
     Dest->>Dest: Verify destination URL
     Dest->>Dest: Verify travel time math
     Dest->>Dest: Verify end_timestamp not expired (anti-cheat)
     Dest->>Dest: Verify quorum (2f+1 signatures)
-    Dest->>D1: Store plan (incoming traffic)
+    Dest->>DO: Store plan (incoming traffic)
     Dest-->>Origin: 200 OK
-    Origin->>D1: Persist Approved Plan (travel_plans, status=PLAN_ACCEPTED)
+    Origin->>DO: Persist Approved Plan (travel_plans, status=PLAN_ACCEPTED)
     Origin->>DO: Broadcast QUORUM_REACHED event
     DO-->>Traveler: WebSocket push (status updates to live UI)
     Origin-->>Traveler: 200 OK (Travel Authorized)
@@ -93,31 +91,36 @@ sequenceDiagram
 
 ## Data Storage
 
-| Store              | Purpose                                                   | Durability                        |
-| ------------------ | --------------------------------------------------------- | --------------------------------- |
-| **D1**             | `travel_plans`, `traffic_controllers` cache               | Persistent                        |
-| **KV**             | Ed25519 identity key pair, in-flight consensus plan state | Persistent (keys), TTL 1h (plans) |
-| **Durable Object** | WebSocket sessions, last-50 event ring buffer             | In-memory only (volatile)         |
+All persistent storage lives in the TrafficControl Durable Object's built-in SQLite database:
+
+| Table                 | Purpose                                          | Durability             |
+| --------------------- | ------------------------------------------------ | ---------------------- |
+| `travel_plans`        | Active and historical journeys                   | Persistent             |
+| `traffic_controllers` | Cached neighbor manifests (1h TTL via timestamp) | Persistent             |
+| `identity`            | Ed25519 key pair                                 | Persistent             |
+| `consensus_plans`     | In-flight consensus plan state                   | Persistent (1h expiry) |
+
+The DO also holds in-memory state: WebSocket sessions and a last-50 event ring buffer (volatile).
 
 ## Plan Data State Diagram
 
-Server-side status stored in `travel_plans.status` (D1) and the in-flight KV plan:
+Server-side status stored in `travel_plans.status` and the in-flight `consensus_plans` table:
 
 ```mermaid
 stateDiagram-v2
     [*] --> PREPARING : Origin creates plan (handleInitiate)
-    PREPARING --> PLAN_ACCEPTED : Quorum reached (2f+1 sigs) (handleCommit → D1 insert)
+    PREPARING --> PLAN_ACCEPTED : Quorum reached (2f+1 sigs) (handleCommit → travel_plans insert)
     PLAN_ACCEPTED --> [*] : end_timestamp passes (no server transition — record kept forever)
 
     note right of PREPARING
-        Stored in KV only
-        (consensus_plan_{id})
+        Stored in consensus_plans table
+        (expires after 1h)
     end note
 
     note right of PLAN_ACCEPTED
-        Persisted to D1 travel_plans
-        Registered at destination (fire-and-forget)
-        KV entry expires after TTL
+        Persisted to travel_plans table
+        Registered at destination
+        consensus_plans entry expires
     end note
 ```
 
@@ -175,21 +178,17 @@ erDiagram
         INTEGER last_manifest_fetch "Unix ms, TTL 1h"
     }
 
-    KV_IDENTITY {
-        TEXT identity_public "Ed25519 public key (Base64)"
-        TEXT identity_private "Ed25519 private key (Base64)"
+    IDENTITY {
+        TEXT key PK "identity_public or identity_private"
+        TEXT value "Ed25519 key (Base64)"
     }
 
-    KV_CONSENSUS {
-        TEXT consensus_plan_id PK "consensus_plan_{uuid}"
-        TEXT plan_json "TravelPlan with accumulated sigs"
+    CONSENSUS_PLANS {
+        TEXT id PK "plan UUID"
+        TEXT data "TravelPlan JSON with accumulated sigs"
+        INTEGER expires_at "Unix ms"
     }
 
-    DO_TRAFFIC_CONTROL {
-        SET sessions "Active WebSocket connections"
-        ARRAY events "Ring buffer: last 50 API events"
-    }
-
-    TRAVEL_PLANS ||--o{ KV_CONSENSUS : "built during PBFT"
+    TRAVEL_PLANS ||--o{ CONSENSUS_PLANS : "built during PBFT"
     TRAVEL_PLANS }o--o{ TRAFFIC_CONTROLLERS : "controllers elected from"
 ```

@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 import * as p from "@clack/prompts";
 import { execSync, execFileSync } from "child_process";
-import { cpSync, readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "fs";
+import {
+  cpSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+} from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -37,16 +44,6 @@ const runWrangler = (args) => {
   } catch (e) {
     return e.stdout || "";
   }
-};
-
-const parseKvId = (output) => {
-  const match = output.match(/"id":\s*"([^"]+)"/);
-  return match?.[1] ?? null;
-};
-
-const parseD1Id = (output) => {
-  const match = output.match(/"uuid":\s*"([^"]+)"/);
-  return match?.[1] ?? null;
 };
 
 const patchConfigTs = (filePath, name, description, warpLinks) => {
@@ -95,7 +92,8 @@ const main = async () => {
           message: "Output directory",
           placeholder: "my-planet",
           defaultValue: "my-planet",
-          validate: (v) => (v.trim() ? undefined : "Directory name is required"),
+          validate: (v) =>
+            v.trim() ? undefined : "Directory name is required",
         }),
       planetName: () =>
         p.text({
@@ -165,9 +163,17 @@ const main = async () => {
   s.start("Configuring planet...");
   const configPath = path.join(outDir, "src/lib/config.ts");
   const warpLinks = answers.warpLinks
-    ? answers.warpLinks.split(",").map((u) => u.trim()).filter(Boolean)
+    ? answers.warpLinks
+        .split(",")
+        .map((u) => u.trim())
+        .filter(Boolean)
     : [];
-  patchConfigTs(configPath, answers.planetName, answers.planetDescription, warpLinks);
+  patchConfigTs(
+    configPath,
+    answers.planetName,
+    answers.planetDescription,
+    warpLinks,
+  );
   s.stop("Planet configured.");
 
   // Update package.json name
@@ -176,27 +182,6 @@ const main = async () => {
   pkg.name = answers.workerName;
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
-  // Create Cloudflare resources
-  s.start("Creating KV namespace...");
-  const kvOutput = runWrangler(["kv", "namespace", "create", "KV", "--json"]);
-  const kvId = parseKvId(kvOutput);
-  if (!kvId) {
-    s.stop("Failed to create KV namespace.");
-    p.note(kvOutput, "Wrangler output");
-    process.exit(1);
-  }
-  s.stop(`KV namespace created: ${kvId}`);
-
-  s.start("Creating D1 database...");
-  const d1Output = runWrangler(["d1", "create", "planet_db", "--json"]);
-  const d1Id = parseD1Id(d1Output);
-  if (!d1Id) {
-    s.stop("Failed to create D1 database.");
-    p.note(d1Output, "Wrangler output");
-    process.exit(1);
-  }
-  s.stop(`D1 database created: ${d1Id}`);
-
   // Write wrangler.jsonc
   s.start("Writing wrangler.jsonc...");
   const wranglerConfig = {
@@ -204,19 +189,10 @@ const main = async () => {
     main: "dist/server/entry.mjs",
     compatibility_date: "2026-03-31",
     assets: { directory: "dist/client", binding: "STATIC_ASSETS" },
-    d1_databases: [
-      {
-        binding: "DB",
-        database_name: "planet_db",
-        database_id: d1Id,
-        migrations_dir: "migrations",
-      },
-    ],
-    kv_namespaces: [{ binding: "KV", id: kvId }],
     durable_objects: {
       bindings: [{ name: "TRAFFIC_CONTROL", class_name: "TrafficControl" }],
     },
-    migrations: [{ tag: "v1", new_classes: ["TrafficControl"] }],
+    migrations: [{ tag: "v1", new_sqlite_classes: ["TrafficControl"] }],
   };
   writeFileSync(
     path.join(outDir, "wrangler.jsonc"),

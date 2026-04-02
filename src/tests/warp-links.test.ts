@@ -30,14 +30,11 @@ const cleanup = () => {
 
 describe("Warp Links Configuration", () => {
   beforeAll(async () => {
-    console.log(`[${TEST_NAME}] Initializing database...`);
-    execSync(
-      `npx wrangler d1 execute planet_db --file=schema.sql -c wrangler.dev.jsonc --local --persist-to=.wrangler/state/warp-test`,
-      {
-        cwd: PROJECT_ROOT,
-        stdio: "inherit",
-      },
-    );
+    console.log(`[${TEST_NAME}] Clearing previous state...`);
+    execSync(`rm -rf .wrangler/state/warp-test`, {
+      cwd: PROJECT_ROOT,
+      stdio: "inherit",
+    });
 
     console.log(`Starting ${TEST_NAME} on http://${TEST_HOST}:${TEST_PORT}...`);
 

@@ -2,6 +2,7 @@
 import md5 from "md5";
 import { env } from "cloudflare:workers";
 import { WARP_LINKS, PLANET_NAME, PLANET_DESCRIPTION } from "../lib/config";
+import { doQuery } from "../lib/do-storage";
 
 const formatCoord = (n: number) => n.toFixed(2).padStart(6, "0");
 
@@ -59,38 +60,34 @@ const myCoords = calculateCoordinates(landingSite);
 const departureBuffer =
   parseInt(getSimVar("DEPARTURE_BUFFER_MS") || "") || 30 * 1000;
 
-// Cloudflare D1 Integration
-const { DB } = (env as any) || {};
+// Durable Object Storage
+const { TRAFFIC_CONTROL } = (env as any) || {};
 
 let traffic = [];
 let archive = [];
 
-if (DB) {
+if (TRAFFIC_CONTROL) {
   try {
     const now = Date.now();
 
-    const { results: activePlans } = await DB.prepare(
-      `
-            SELECT * FROM travel_plans
-            WHERE end_timestamp > ? AND (origin_url = ? OR destination_url = ?)
-            ORDER BY start_timestamp ASC
-        `,
-    )
-      .bind(now, landingSite, landingSite)
-      .all();
+    const activePlans = await doQuery(
+      TRAFFIC_CONTROL,
+      `SELECT * FROM travel_plans
+       WHERE end_timestamp > ? AND (origin_url = ? OR destination_url = ?)
+       ORDER BY start_timestamp ASC`,
+      [now, landingSite, landingSite],
+    );
 
     // Build a URL→name map from warp links and the traffic_controllers cache
     const warpNameMap = new Map(WARP_LINKS.map((l) => [l.url, l.name]));
 
-    const { results: archiveRecords } = await DB.prepare(
-      `
-            SELECT * FROM travel_plans
-            WHERE end_timestamp <= ? AND (origin_url = ? OR destination_url = ?)
-            ORDER BY end_timestamp DESC LIMIT 20
-        `,
-    )
-      .bind(now, landingSite, landingSite)
-      .all();
+    const archiveRecords = await doQuery(
+      TRAFFIC_CONTROL,
+      `SELECT * FROM travel_plans
+       WHERE end_timestamp <= ? AND (origin_url = ? OR destination_url = ?)
+       ORDER BY end_timestamp DESC LIMIT 20`,
+      [now, landingSite, landingSite],
+    );
 
     const allPlanUrls = [
       ...(activePlans || []).flatMap((p: any) => [
@@ -107,11 +104,11 @@ if (DB) {
     );
     if (uniqueUrls.length > 0) {
       const placeholders = uniqueUrls.map(() => "?").join(",");
-      const { results: cachedNames } = await DB.prepare(
+      const cachedNames = await doQuery(
+        TRAFFIC_CONTROL,
         `SELECT planet_url, name FROM traffic_controllers WHERE planet_url IN (${placeholders})`,
-      )
-        .bind(...uniqueUrls)
-        .all();
+        uniqueUrls,
+      );
       for (const row of cachedNames || [])
         warpNameMap.set((row as any).planet_url, (row as any).name);
     }
@@ -557,6 +554,8 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
 
       const closeDeck = () => {
         flightDeck.classList.add("hidden");
+        initiateBtn.disabled = false;
+        initiateBtn.textContent = "JUMP";
         window.dispatchEvent(new CustomEvent("clearSelection"));
       };
 
@@ -856,14 +855,12 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
           const data = await response.json();
           if (data.plan) {
             addTrafficRow(data.plan, filedAt);
-            flightDeck.classList.add("hidden");
-            window.dispatchEvent(new CustomEvent("clearSelection"));
+            closeDeck();
           } else if (
             data.error === "insufficient_controllers" ||
             data.error === "no_destination_space_port"
           ) {
-            flightDeck.classList.add("hidden");
-            window.dispatchEvent(new CustomEvent("clearSelection"));
+            closeDeck();
             noTravelReason.textContent =
               NO_TRAVEL_MESSAGES[data.error] || "Travel is not available.";
             noTravelDialog.classList.remove("hidden");
