@@ -4,7 +4,16 @@
  * Run before publishing: npm run sync-template
  * Also runs automatically via prepublishOnly.
  */
-import { cpSync, rmSync, existsSync, readdirSync, statSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import {
+  cpSync,
+  rmSync,
+  existsSync,
+  readdirSync,
+  statSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -23,8 +32,7 @@ const EXCLUDE = new Set([
   "package-lock.json",
 ]);
 
-const shouldExclude = (name) =>
-  EXCLUDE.has(name) || name.startsWith(".env");
+const shouldExclude = (name) => EXCLUDE.has(name) || name.startsWith(".env");
 
 const copyDir = (src, dest) => {
   mkdirSync(dest, { recursive: true });
@@ -49,7 +57,9 @@ copyDir(SRC, DEST);
 console.log("Template synced to create-planet/template/");
 
 // Sync version from planet's package.json
-const planetPkg = JSON.parse(readFileSync(path.join(SRC, "package.json"), "utf-8"));
+const planetPkg = JSON.parse(
+  readFileSync(path.join(SRC, "package.json"), "utf-8"),
+);
 const createPkgPath = path.join(__dirname, "../package.json");
 const createPkg = JSON.parse(readFileSync(createPkgPath, "utf-8"));
 if (createPkg.version !== planetPkg.version) {

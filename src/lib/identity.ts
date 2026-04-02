@@ -1,21 +1,21 @@
 import { CryptoCore } from "./crypto";
+import { doStorage } from "./do-storage";
 
 export class PlanetIdentity {
   /**
-   * Retrieves or generates the planet's Ed25519 identity keys from KV.
+   * Retrieves or generates the planet's Ed25519 identity keys from DO storage.
    */
-  static async getIdentity(KV: KVNamespace): Promise<{
+  static async getIdentity(TRAFFIC_CONTROL: DurableObjectNamespace): Promise<{
     publicKey: CryptoKey;
     privateKey: CryptoKey;
     publicKeyBase64: string;
   }> {
-    const existingPublic = await KV.get("identity_public");
-    const existingPrivate = await KV.get("identity_private");
+    const result: any = await doStorage(TRAFFIC_CONTROL, "getIdentity");
 
-    if (existingPublic && existingPrivate) {
-      const publicKey = await CryptoCore.importKey(existingPublic, "public");
-      const privateKey = await CryptoCore.importKey(existingPrivate, "private");
-      return { publicKey, privateKey, publicKeyBase64: existingPublic };
+    if (result.public && result.private) {
+      const publicKey = await CryptoCore.importKey(result.public, "public");
+      const privateKey = await CryptoCore.importKey(result.private, "private");
+      return { publicKey, privateKey, publicKeyBase64: result.public };
     }
 
     // Generate new if not found
@@ -23,8 +23,10 @@ export class PlanetIdentity {
     const publicB64 = await CryptoCore.exportKey(keyPair.publicKey);
     const privateB64 = await CryptoCore.exportKey(keyPair.privateKey);
 
-    await KV.put("identity_public", publicB64);
-    await KV.put("identity_private", privateB64);
+    await doStorage(TRAFFIC_CONTROL, "setIdentity", {
+      publicKey: publicB64,
+      privateKey: privateB64,
+    });
 
     return {
       publicKey: keyPair.publicKey,

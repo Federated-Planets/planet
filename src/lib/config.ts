@@ -8,12 +8,18 @@ export const DEFAULT_WARP_LINKS = [
     name: "Federation Prime",
     url: "https://prime.federatedplanets.com/",
   },
-  { name: "Waystation Meridian", url: "https://waystation.federatedplanets.com/" },
+  {
+    name: "Waystation Meridian",
+    url: "https://waystation.federatedplanets.com/",
+  },
   { name: "The Interchange", url: "https://interchange.federatedplanets.com/" },
   { name: "Port Cassini", url: "https://port-cassini.federatedplanets.com/" },
   { name: "Terminus Reach", url: "https://terminus.federatedplanets.com/" },
   { name: "Driftyard Seven", url: "https://driftyard.federatedplanets.com/" },
-  { name: "Towel 42 Space Outpost", url: "https://towel-42.federatedplanets.com/" },
+  {
+    name: "Towel 42 Space Outpost",
+    url: "https://towel-42.federatedplanets.com/",
+  },
   { name: "Explorers Outpost", url: "https://www.nasa.gov/" },
 ];
 

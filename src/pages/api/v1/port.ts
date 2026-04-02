@@ -6,6 +6,7 @@ import { CryptoCore } from "../../../lib/crypto";
 import { PlanetIdentity } from "../../../lib/identity";
 import { ConsensusEngine, type TravelPlan } from "../../../lib/consensus";
 import { WARP_LINKS, PLANET_NAME } from "../../../lib/config";
+import { doQuery, doExec } from "../../../lib/do-storage";
 import { env } from "cloudflare:workers";
 
 const InitiateSchema = z.object({
@@ -24,6 +25,7 @@ const TravelPlanSchema = z.object({
   status: z.enum(["PREPARING", "PLAN_ACCEPTED"]),
   traffic_controllers: z.array(z.string()),
   signatures: z.record(z.string()),
+  origin_lists_dest: z.boolean().optional(),
 });
 
 // Returns ms per Flight-Year. Default: 1 hour (production). Override with WARP_MS_PER_FY for dev.
@@ -92,7 +94,7 @@ async function broadcastEvent(
   }
 }
 export const GET: APIRoute = async ({ request }) => {
-  const { DB } = env as any;
+  const { TRAFFIC_CONTROL } = env as any;
   const url = new URL(request.url);
   const action = url.searchParams.get("action");
 
@@ -103,18 +105,18 @@ export const GET: APIRoute = async ({ request }) => {
         status: 400,
       });
     }
-    const manifest = await discoverSpacePort(targetUrl, DB);
+    const manifest = await discoverSpacePort(targetUrl, TRAFFIC_CONTROL);
     return new Response(JSON.stringify({ has_space_port: manifest !== null }), {
       status: 200,
     });
   }
 
   if (action === "neighbors") {
-    if (!DB || WARP_LINKS.length === 0) {
+    if (!TRAFFIC_CONTROL || WARP_LINKS.length === 0) {
       return new Response(JSON.stringify({ neighbors: [] }), { status: 200 });
     }
     const results = await Promise.all(
-      WARP_LINKS.map((l) => discoverSpacePort(l.url, DB)),
+      WARP_LINKS.map((l) => discoverSpacePort(l.url, TRAFFIC_CONTROL)),
     );
     const neighbors = results.filter((n): n is PlanetManifest => n !== null);
     return new Response(JSON.stringify({ neighbors }), { status: 200 });
@@ -126,7 +128,7 @@ export const GET: APIRoute = async ({ request }) => {
 };
 
 export const POST: APIRoute = async ({ request }) => {
-  const { KV, DB, TRAFFIC_CONTROL } = env as any;
+  const { TRAFFIC_CONTROL } = env as any;
   const url = new URL(request.url);
   const action = url.searchParams.get("action");
   const senderOrigin =
@@ -150,37 +152,13 @@ export const POST: APIRoute = async ({ request }) => {
 
     switch (action) {
       case "initiate":
-        return await handleInitiate(
-          request,
-          KV,
-          DB,
-          localPlanet,
-          TRAFFIC_CONTROL,
-        );
+        return await handleInitiate(request, TRAFFIC_CONTROL, localPlanet);
       case "prepare":
-        return await handlePrepare(
-          request,
-          KV,
-          DB,
-          localPlanet,
-          TRAFFIC_CONTROL,
-        );
+        return await handlePrepare(request, TRAFFIC_CONTROL, localPlanet);
       case "register":
-        return await handleRegister(
-          request,
-          KV,
-          DB,
-          localPlanet,
-          TRAFFIC_CONTROL,
-        );
+        return await handleRegister(request, TRAFFIC_CONTROL, localPlanet);
       case "commit":
-        return await handleCommit(
-          request,
-          KV,
-          DB,
-          localPlanet,
-          TRAFFIC_CONTROL,
-        );
+        return await handleCommit(request, TRAFFIC_CONTROL, localPlanet);
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }), {
           status: 400,
@@ -200,24 +178,21 @@ export const POST: APIRoute = async ({ request }) => {
 
 async function discoverSpacePort(
   landingSiteUrl: string,
-  DB: D1Database,
+  TRAFFIC_CONTROL: DurableObjectNamespace,
 ): Promise<PlanetManifest | null> {
   try {
-    const cached: any = await DB.prepare(
-      `
-            SELECT * FROM traffic_controllers 
-            WHERE planet_url = ? 
-            AND last_manifest_fetch > ?
-        `,
-    )
-      .bind(landingSiteUrl, Date.now() - 3600000)
-      .first();
+    const cached = await doQuery(
+      TRAFFIC_CONTROL,
+      `SELECT * FROM traffic_controllers WHERE planet_url = ? AND last_manifest_fetch > ?`,
+      [landingSiteUrl, Date.now() - 3600000],
+    );
 
-    if (cached) {
+    if (cached.length > 0) {
+      const row: any = cached[0];
       return {
-        name: cached.name,
-        landing_site: cached.planet_url,
-        space_port: cached.space_port_url,
+        name: row.name,
+        landing_site: row.planet_url,
+        space_port: row.space_port_url,
       };
     }
 
@@ -251,14 +226,11 @@ async function discoverSpacePort(
       space_port: remoteManifest.space_port,
     };
 
-    await DB.prepare(
-      `
-            INSERT OR REPLACE INTO traffic_controllers (planet_url, name, space_port_url, last_manifest_fetch)
-            VALUES (?, ?, ?, ?)
-        `,
-    )
-      .bind(planet.landing_site, planet.name, planet.space_port, Date.now())
-      .run();
+    await doExec(
+      TRAFFIC_CONTROL,
+      `INSERT OR REPLACE INTO traffic_controllers (planet_url, name, space_port_url, last_manifest_fetch) VALUES (?, ?, ?, ?)`,
+      [planet.landing_site, planet.name, planet.space_port, Date.now()],
+    );
 
     return planet;
   } catch (e) {
@@ -269,10 +241,8 @@ async function discoverSpacePort(
 
 async function handleInitiate(
   request: Request,
-  KV: KVNamespace,
-  DB: D1Database,
+  TRAFFIC_CONTROL: DurableObjectNamespace,
   localPlanet: any,
-  TRAFFIC_CONTROL: any,
 ) {
   const body = await request.json();
   const data = InitiateSchema.parse(body);
@@ -299,8 +269,8 @@ async function handleInitiate(
   const endTimestamp = startTimestamp + travelTimeHours * msPerFY();
 
   const discoveryPromises = [
-    discoverSpacePort(data.destination_url, DB),
-    ...WARP_LINKS.map((l) => discoverSpacePort(l.url, DB)),
+    discoverSpacePort(data.destination_url, TRAFFIC_CONTROL),
+    ...WARP_LINKS.map((l) => discoverSpacePort(l.url, TRAFFIC_CONTROL)),
   ];
   const [destManifest, ...neighborResults] =
     await Promise.all(discoveryPromises);
@@ -338,6 +308,64 @@ async function handleInitiate(
   } catch (e: any) {
     console.warn(
       `[${localPlanet.name}] Could not fetch destination neighbors: ${e.message}`,
+    );
+  }
+
+  // Enforce planet-funded shuttle limits based on neighbor relationship
+  const originListsDest = originNeighbors.some(
+    (n) => n.landing_site === destManifest.landing_site,
+  );
+  const destListsOrigin = destNeighbors.some(
+    (n) => n.landing_site === localPlanet.landing_site,
+  );
+
+  const shuttleLimit =
+    originListsDest && destListsOrigin
+      ? 2
+      : originListsDest || destListsOrigin
+        ? 1
+        : 0;
+
+  const activeRows = await doQuery(
+    TRAFFIC_CONTROL,
+    `SELECT COUNT(*) as count FROM travel_plans
+     WHERE ((origin_url = ? AND destination_url = ?)
+        OR  (origin_url = ? AND destination_url = ?))
+       AND end_timestamp > ?`,
+    [
+      localPlanet.landing_site,
+      destManifest.landing_site,
+      destManifest.landing_site,
+      localPlanet.landing_site,
+      Date.now(),
+    ],
+  );
+
+  const activeShuttles = (activeRows[0] as any)?.count ?? 0;
+
+  console.log(
+    `[${localPlanet.name}] Shuttle limit check: ${activeShuttles}/${shuttleLimit} active (${localPlanet.landing_site} ↔ ${destManifest.landing_site})`,
+  );
+
+  const bypassAllowed = (env as any).ALLOW_TEST_SHUTTLE_BYPASS === "true";
+  const bypassRequested =
+    request.headers.get("X-Bypass-Shuttle-Limit") === "true";
+
+  if (activeShuttles >= shuttleLimit && !(bypassAllowed && bypassRequested)) {
+    const relationship =
+      originListsDest && destListsOrigin
+        ? "mutual_neighbors"
+        : originListsDest || destListsOrigin
+          ? "one_sided_neighbors"
+          : "non_neighbors";
+    return new Response(
+      JSON.stringify({
+        error: "shuttle_limit_exceeded",
+        active_shuttles: activeShuttles,
+        limit: shuttleLimit,
+        relationship,
+      }),
+      { status: 422, headers: { "Content-Type": "application/json" } },
     );
   }
 
@@ -421,13 +449,14 @@ async function handleInitiate(
     status: "PREPARING",
     traffic_controllers: electedTCs.map((tc) => tc.landing_site),
     signatures: {},
+    origin_lists_dest: originListsDest,
   };
 
-  const { privateKey } = await PlanetIdentity.getIdentity(KV);
+  const { privateKey } = await PlanetIdentity.getIdentity(TRAFFIC_CONTROL);
   const signature = await CryptoCore.sign(JSON.stringify(plan), privateKey);
   plan.signatures[localPlanet.landing_site] = signature;
 
-  await ConsensusEngine.savePlanState(KV, plan);
+  await ConsensusEngine.savePlanState(TRAFFIC_CONTROL, plan);
   await ConsensusEngine.broadcast(plan, "prepare", electedTCs);
 
   return new Response(JSON.stringify({ plan }), { status: 200 });
@@ -435,10 +464,8 @@ async function handleInitiate(
 
 async function handlePrepare(
   request: Request,
-  KV: KVNamespace,
-  DB: D1Database,
+  TRAFFIC_CONTROL: DurableObjectNamespace,
   localPlanet: any,
-  TRAFFIC_CONTROL: any,
 ) {
   const plan = TravelPlanSchema.parse(await request.json());
 
@@ -464,14 +491,14 @@ async function handlePrepare(
     throw new Error("Invalid travel time calculation.");
   }
 
-  const { privateKey } = await PlanetIdentity.getIdentity(KV);
+  const { privateKey } = await PlanetIdentity.getIdentity(TRAFFIC_CONTROL);
   const signature = await CryptoCore.sign(JSON.stringify(plan), privateKey);
   plan.signatures[localPlanet.landing_site] = signature;
 
-  await ConsensusEngine.savePlanState(KV, plan);
+  await ConsensusEngine.savePlanState(TRAFFIC_CONTROL, plan);
 
   const controllersPromises = plan.traffic_controllers.map((url) =>
-    discoverSpacePort(url, DB),
+    discoverSpacePort(url, TRAFFIC_CONTROL),
   );
   const controllers = (await Promise.all(controllersPromises)).filter(
     (n): n is PlanetManifest => n !== null,
@@ -483,10 +510,8 @@ async function handlePrepare(
 }
 async function handleRegister(
   request: Request,
-  KV: KVNamespace,
-  DB: D1Database,
+  TRAFFIC_CONTROL: DurableObjectNamespace,
   localPlanet: any,
-  TRAFFIC_CONTROL: any,
 ) {
   const plan = TravelPlanSchema.parse(await request.json());
 
@@ -532,18 +557,66 @@ async function handleRegister(
     });
   }
 
-  const alreadyStored = await DB.prepare(
+  const alreadyStored = await doQuery(
+    TRAFFIC_CONTROL,
     `SELECT id FROM travel_plans WHERE id = ?`,
-  )
-    .bind(plan.id)
-    .first();
+    [plan.id],
+  );
 
-  if (!alreadyStored) {
-    await DB.prepare(
+  if (alreadyStored.length === 0) {
+    // Enforce shuttle limit from destination's perspective.
+    // originListsDest is carried in the plan (set at initiation) to avoid a
+    // circular HTTP call back to the origin while it is processing handleCommit.
+    const destListsOrigin = WARP_LINKS.some(
+      (l) => new URL(l.url).origin === new URL(plan.origin_url).origin,
+    );
+    const originListsDest = plan.origin_lists_dest ?? false;
+
+    const destShuttleLimit =
+      originListsDest && destListsOrigin
+        ? 2
+        : originListsDest || destListsOrigin
+          ? 1
+          : 0;
+
+    const destActiveRows = await doQuery(
+      TRAFFIC_CONTROL,
+      `SELECT COUNT(*) as count FROM travel_plans
+       WHERE ((origin_url = ? AND destination_url = ?)
+          OR  (origin_url = ? AND destination_url = ?))
+         AND end_timestamp > ?`,
+      [
+        plan.origin_url,
+        localPlanet.landing_site,
+        localPlanet.landing_site,
+        plan.origin_url,
+        Date.now(),
+      ],
+    );
+
+    if (((destActiveRows[0] as any)?.count ?? 0) >= destShuttleLimit) {
+      const relationship =
+        originListsDest && destListsOrigin
+          ? "mutual_neighbors"
+          : originListsDest || destListsOrigin
+            ? "one_sided_neighbors"
+            : "non_neighbors";
+      return new Response(
+        JSON.stringify({
+          error: "shuttle_limit_exceeded",
+          active_shuttles: (destActiveRows[0] as any)?.count ?? 0,
+          limit: destShuttleLimit,
+          relationship,
+        }),
+        { status: 422, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    await doExec(
+      TRAFFIC_CONTROL,
       `INSERT OR IGNORE INTO travel_plans (id, ship_id, origin_url, destination_url, start_timestamp, end_timestamp, status, signatures)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(
+      [
         plan.id,
         plan.ship_id,
         plan.origin_url,
@@ -552,8 +625,8 @@ async function handleRegister(
         plan.end_timestamp,
         plan.status,
         JSON.stringify(plan.signatures),
-      )
-      .run();
+      ],
+    );
 
     const fmt = (n: number) => n.toFixed(1);
     const originCoordsFormatted = `${fmt(originCoords.x)}:${fmt(originCoords.y)}:${fmt(originCoords.z)}`;
@@ -572,42 +645,41 @@ async function handleRegister(
 
 async function handleCommit(
   request: Request,
-  KV: KVNamespace,
-  DB: D1Database,
+  TRAFFIC_CONTROL: DurableObjectNamespace,
   localPlanet: any,
-  TRAFFIC_CONTROL: any,
 ) {
   const incomingPlan = TravelPlanSchema.parse(await request.json());
   const existing =
-    (await ConsensusEngine.getPlanState(KV, incomingPlan.id)) || incomingPlan;
+    (await ConsensusEngine.getPlanState(TRAFFIC_CONTROL, incomingPlan.id)) ||
+    incomingPlan;
 
   console.log(
     `[${localPlanet.name}] Committing travel plan ${incomingPlan.id} (Existing signatures: ${Object.keys(existing.signatures).length}, New signatures: ${Object.keys(incomingPlan.signatures).length})`,
   );
 
   existing.signatures = { ...existing.signatures, ...incomingPlan.signatures };
-  await ConsensusEngine.savePlanState(KV, existing);
+  await ConsensusEngine.savePlanState(TRAFFIC_CONTROL, existing);
 
   if (ConsensusEngine.hasQuorum(existing) && existing.status === "PREPARING") {
     // Check if we already archived it to prevent race condition across TCs
-    const alreadyArchived = await DB.prepare(
+    const alreadyArchived = await doQuery(
+      TRAFFIC_CONTROL,
       `SELECT id FROM travel_plans WHERE id = ?`,
-    )
-      .bind(existing.id)
-      .first();
+      [existing.id],
+    );
 
-    if (!alreadyArchived) {
+    if (alreadyArchived.length === 0) {
       console.log(
         `[${localPlanet.name}] Quorum reached for plan ${existing.id}. Registering with destination.`,
       );
 
       existing.status = "PLAN_ACCEPTED";
-      await ConsensusEngine.savePlanState(KV, existing);
+      await ConsensusEngine.savePlanState(TRAFFIC_CONTROL, existing);
 
       // Register with destination synchronously — must succeed before committing locally
       const destManifest = await discoverSpacePort(
         existing.destination_url,
-        DB,
+        TRAFFIC_CONTROL,
       );
       if (!destManifest?.space_port) {
         return new Response(
@@ -642,13 +714,11 @@ async function handleCommit(
         );
       }
 
-      await DB.prepare(
-        `
-              INSERT OR IGNORE INTO travel_plans (id, ship_id, origin_url, destination_url, start_timestamp, end_timestamp, status, signatures)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `,
-      )
-        .bind(
+      await doExec(
+        TRAFFIC_CONTROL,
+        `INSERT OR IGNORE INTO travel_plans (id, ship_id, origin_url, destination_url, start_timestamp, end_timestamp, status, signatures)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
           existing.id,
           existing.ship_id,
           existing.origin_url,
@@ -657,8 +727,8 @@ async function handleCommit(
           existing.end_timestamp,
           existing.status,
           JSON.stringify(existing.signatures),
-        )
-        .run();
+        ],
+      );
 
       await broadcastEvent(TRAFFIC_CONTROL, {
         type: "QUORUM_REACHED",

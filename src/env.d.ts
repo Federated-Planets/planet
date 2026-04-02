@@ -1,8 +1,6 @@
 /// <reference types="astro/client" />
 
 interface ImportMetaEnv {
-  readonly KV: import("@cloudflare/workers-types").KVNamespace;
-  readonly DB: import("@cloudflare/workers-types").D1Database;
   readonly TRAFFIC_CONTROL: import("@cloudflare/workers-types").DurableObjectNamespace;
   readonly PUBLIC_SIM_PLANET_NAME?: string;
   readonly PUBLIC_SIM_PLANET_DESCRIPTION?: string;
