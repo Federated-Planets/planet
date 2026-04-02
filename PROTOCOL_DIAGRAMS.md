@@ -93,12 +93,12 @@ sequenceDiagram
 
 All persistent storage lives in the TrafficControl Durable Object's built-in SQLite database:
 
-| Table                | Purpose                                          | Durability                        |
-| -------------------- | ------------------------------------------------ | --------------------------------- |
-| `travel_plans`       | Active and historical journeys                   | Persistent                        |
-| `traffic_controllers`| Cached neighbor manifests (1h TTL via timestamp) | Persistent                        |
-| `identity`           | Ed25519 key pair                                 | Persistent                        |
-| `consensus_plans`    | In-flight consensus plan state                   | Persistent (1h expiry)            |
+| Table                 | Purpose                                          | Durability             |
+| --------------------- | ------------------------------------------------ | ---------------------- |
+| `travel_plans`        | Active and historical journeys                   | Persistent             |
+| `traffic_controllers` | Cached neighbor manifests (1h TTL via timestamp) | Persistent             |
+| `identity`            | Ed25519 key pair                                 | Persistent             |
+| `consensus_plans`     | In-flight consensus plan state                   | Persistent (1h expiry) |
 
 The DO also holds in-memory state: WebSocket sessions and a last-50 event ring buffer (volatile).
 

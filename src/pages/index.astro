@@ -554,6 +554,8 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
 
       const closeDeck = () => {
         flightDeck.classList.add("hidden");
+        initiateBtn.disabled = false;
+        initiateBtn.textContent = "JUMP";
         window.dispatchEvent(new CustomEvent("clearSelection"));
       };
 
@@ -853,14 +855,12 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
           const data = await response.json();
           if (data.plan) {
             addTrafficRow(data.plan, filedAt);
-            flightDeck.classList.add("hidden");
-            window.dispatchEvent(new CustomEvent("clearSelection"));
+            closeDeck();
           } else if (
             data.error === "insufficient_controllers" ||
             data.error === "no_destination_space_port"
           ) {
-            flightDeck.classList.add("hidden");
-            window.dispatchEvent(new CustomEvent("clearSelection"));
+            closeDeck();
             noTravelReason.textContent =
               NO_TRAVEL_MESSAGES[data.error] || "Travel is not available.";
             noTravelDialog.classList.remove("hidden");
