@@ -102,6 +102,47 @@ All persistent storage lives in the TrafficControl Durable Object's built-in SQL
 
 The DO also holds in-memory state: WebSocket sessions and a last-50 event ring buffer (volatile).
 
+## Travel Plan Data by Planet Role
+
+Storage is **asymmetric** — not every planet in the consensus persists the same data.
+
+### Origin Planet (source) — `travel_plans` table
+
+| Field             | Value                                                        |
+| ----------------- | ------------------------------------------------------------ |
+| `id`              | UUID for the plan                                            |
+| `ship_id`         | Identifier of the traveling ship                             |
+| `origin_url`      | This planet's own landing site URL                           |
+| `destination_url` | Destination planet's landing site URL                        |
+| `start_timestamp` | Departure time (Unix ms)                                     |
+| `end_timestamp`   | Arrival time (Unix ms)                                       |
+| `status`          | `PLAN_ACCEPTED` (only persisted after quorum)                |
+| `signatures`      | JSON map of `planet_url -> Ed25519 signature` from all signing TCs |
+
+Written during `handleCommit`, **after** the destination confirms registration (`port.ts` ~line 717-731).
+
+### Destination Planet — `travel_plans` table
+
+Same fields, same values — **identical record** to the origin.
+
+Written during `handleRegister` (`port.ts` ~line 615-629). The destination writes **before** the origin; origin only persists after receiving 200 OK from the destination.
+
+### Traffic Controller Planets — `consensus_plans` table (ephemeral)
+
+| Field        | Value                                                        |
+| ------------ | ------------------------------------------------------------ |
+| `id`         | Plan UUID                                                    |
+| `data`       | Full `TravelPlan` JSON (all fields + accumulated signatures) |
+| `expires_at` | 1 hour from creation                                         |
+
+TCs participate in consensus and accumulate signatures but do **not** persist to `travel_plans`. Their `consensus_plans` entries expire after 1 hour.
+
+### Key details
+
+- Origin and destination store **identical** `travel_plans` rows.
+- The `TravelPlan` TypeScript interface (`consensus.ts` lines 28-39) includes `traffic_controllers` and `origin_lists_dest` fields that are used in-flight but are **not** persisted to the `travel_plans` SQL table (the DB schema in `traffic-control.ts` lines 10-19 omits them).
+- Destination writes first; origin writes only after receiving 200 OK from the destination.
+
 ## Plan Data State Diagram
 
 Server-side status stored in `travel_plans.status` and the in-flight `consensus_plans` table:
