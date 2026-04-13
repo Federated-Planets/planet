@@ -189,6 +189,7 @@ async function discoverSpacePort(
 
     if (cached.length > 0) {
       const row: any = cached[0];
+      if (!row.space_port_url) return null;
       return {
         name: row.name,
         landing_site: row.planet_url,
@@ -196,15 +197,33 @@ async function discoverSpacePort(
       };
     }
 
+    const cacheNegative = async () => {
+      const fallbackName = new URL(landingSiteUrl).hostname;
+      await doExec(
+        TRAFFIC_CONTROL,
+        `INSERT OR REPLACE INTO traffic_controllers (planet_url, name, space_port_url, last_manifest_fetch) VALUES (?, ?, ?, ?)`,
+        [landingSiteUrl, fallbackName, "", Date.now()],
+      );
+      broadcastEvent(TRAFFIC_CONTROL, {
+        type: "MANIFEST_CACHED",
+        planet_url: landingSiteUrl,
+        has_space_port: false,
+      });
+    };
+
     const siteRes = await fetch(landingSiteUrl);
     const html = await siteRes.text();
     if (!html || !html.includes('rel="space-manifest"')) {
+      await cacheNegative();
       return null;
     }
     const $ = cheerio.load(html);
 
     let manifestPath = $('link[rel="space-manifest"]').attr("href");
-    if (!manifestPath) return null;
+    if (!manifestPath) {
+      await cacheNegative();
+      return null;
+    }
 
     const manifestUrl = new URL(manifestPath, landingSiteUrl).href;
     const manifestRes = await fetch(manifestUrl);
@@ -213,12 +232,16 @@ async function discoverSpacePort(
       !manifestRes.ok ||
       !manifestRes.headers.get("content-type")?.includes("application/json")
     ) {
+      await cacheNegative();
       return null;
     }
 
     const remoteManifest: any = await manifestRes.json().catch(() => null);
 
-    if (!remoteManifest || !remoteManifest.space_port) return null;
+    if (!remoteManifest || !remoteManifest.space_port) {
+      await cacheNegative();
+      return null;
+    }
 
     const planet: PlanetManifest = {
       name: remoteManifest.name,
@@ -231,6 +254,12 @@ async function discoverSpacePort(
       `INSERT OR REPLACE INTO traffic_controllers (planet_url, name, space_port_url, last_manifest_fetch) VALUES (?, ?, ?, ?)`,
       [planet.landing_site, planet.name, planet.space_port, Date.now()],
     );
+
+    broadcastEvent(TRAFFIC_CONTROL, {
+      type: "MANIFEST_CACHED",
+      planet_url: planet.landing_site,
+      has_space_port: true,
+    });
 
     return planet;
   } catch (e) {
