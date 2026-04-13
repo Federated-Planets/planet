@@ -16,7 +16,7 @@ The interactive setup will ask you for:
 - **Warp links** — URLs of neighboring planets to link to (leave empty for defaults)
 - **Cloudflare worker name** — the name of your Worker on Cloudflare
 
-It will then generate a ready-to-deploy `wrangler.jsonc` configured with a Durable Object for storage.
+It will then generate a ready-to-deploy `wrangler.deploy.jsonc` configured with a Durable Object for storage.
 
 ## Prerequisites
 
@@ -41,12 +41,12 @@ To deploy, connect your project to [Cloudflare Workers CI](https://developers.cl
 ```
 my-planet/
 ├── src/
-│   ├── pages/          # Astro pages (landing site, space port, manifest)
-│   └── lib/            # Protocol logic (consensus, crypto, travel)
-├── public/             # CSS, 3D star map (Three.js), static assets
-├── scripts/            # Dev utilities (simulate universe, inject DO exports)
-├── wrangler.jsonc      # Generated with your worker name and Durable Object config
-├── wrangler.dev.jsonc  # Local development config
+│   ├── pages/            # Astro pages (landing site, space port, manifest)
+│   └── lib/              # Protocol logic (consensus, crypto, travel)
+├── public/               # CSS, 3D star map (Three.js), static assets
+├── scripts/              # Dev utilities (simulate universe, inject DO exports)
+├── wrangler.deploy.jsonc # Generated with your worker name and Durable Object config
+├── wrangler.dev.jsonc    # Local development config
 └── package.json
 ```
 

@@ -182,8 +182,8 @@ const main = async () => {
   pkg.name = answers.workerName;
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
-  // Write wrangler.jsonc
-  s.start("Writing wrangler.jsonc...");
+  // Write wrangler.deploy.jsonc
+  s.start("Writing wrangler.deploy.jsonc...");
   const wranglerConfig = {
     name: answers.workerName,
     main: "dist/server/entry.mjs",
@@ -195,13 +195,13 @@ const main = async () => {
     migrations: [{ tag: "v1", new_sqlite_classes: ["TrafficControl"] }],
   };
   writeFileSync(
-    path.join(outDir, "wrangler.jsonc"),
+    path.join(outDir, "wrangler.deploy.jsonc"),
     JSON.stringify(wranglerConfig, null, 2) + "\n",
   );
-  s.stop("wrangler.jsonc written.");
+  s.stop("wrangler.deploy.jsonc written.");
 
   p.outro(
-    `Your planet is ready!\n\n  cd ${answers.dir}\n  npm install\n  npm run dev\n\nTo deploy, connect ${answers.dir} to Cloudflare Workers CI\nand set the deploy command to: npx wrangler deploy -c wrangler.jsonc`,
+    `Your planet is ready!\n\n  cd ${answers.dir}\n  npm install\n  npm run dev\n\nTo deploy, connect ${answers.dir} to Cloudflare Workers CI\nand set the deploy command to: npm run deploy`,
   );
 };
 
