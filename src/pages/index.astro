@@ -93,6 +93,7 @@ if (TRAFFIC_CONTROL) {
       ...(activePlans || []).flatMap((p: any) => [
         p.origin_url,
         p.destination_url,
+        ...Object.keys(JSON.parse(p.signatures || '{}')),
       ]),
       ...(archiveRecords || []).flatMap((p: any) => [
         p.origin_url,
@@ -139,6 +140,12 @@ if (TRAFFIC_CONTROL) {
         coords: calculateCoordinates(targetUrl),
         originCoords: calculateCoordinates(p.origin_url),
         destCoords: calculateCoordinates(p.destination_url),
+        originName: p.origin_url === landingSite ? planetName : (warpNameMap.get(p.origin_url) ?? new URL(p.origin_url).hostname),
+        destName: p.destination_url === landingSite ? planetName : (warpNameMap.get(p.destination_url) ?? new URL(p.destination_url).hostname),
+        controllers: Object.keys(JSON.parse(p.signatures || '{}')).map((url: string) => ({
+          url,
+          name: url === landingSite ? planetName : (warpNameMap.get(url) ?? new URL(url).hostname),
+        })),
         rawPlan: p,
       };
     });
@@ -343,6 +350,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
           <tbody id="traffic-tbody">
             {
               traffic.map((item) => (
+                <>
                 <tr
                   class={`${item.type} status-${item.type === "preparation" && item.status === "PLAN_ACCEPTED" ? "scheduled" : item.status === "PLAN_ACCEPTED" ? "transit" : item.status.toLowerCase()}`}
                   data-plan-id={item.id}
@@ -352,7 +360,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                   data-location-coords={item.coords.formatted}
                   data-location-url={item.url}
                 >
-                  <td class="ship-id">{item.ship}</td>
+                  <td class="ship-id"><span class="expand-indicator">&#9654;</span> {item.ship}</td>
                   <td>
                     <span class="status-label">
                       {item.type === "preparation" &&
@@ -389,6 +397,56 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                     </div>
                   </td>
                 </tr>
+                <tr class="detail-row hidden" data-detail-for={item.id}>
+                  <td colspan="4">
+                    <div class="plan-details">
+                      <div class="detail-grid">
+                        <div class="detail-item">
+                          <span class="detail-label">Source</span>
+                          <span class="detail-value"><a class="planet-link" href={item.rawPlan.origin_url}>{item.originName}</a></span>
+                        </div>
+                        <div class="detail-item">
+                          <span class="detail-label">Destination</span>
+                          <span class="detail-value"><a class="planet-link" href={item.rawPlan.destination_url}>{item.destName}</a></span>
+                        </div>
+                        <div class="detail-item">
+                          <span class="detail-label">Departure</span>
+                          <span class="detail-value detail-datetime" data-ts={item.rawPlan.start_timestamp}></span>
+                        </div>
+                        <div class="detail-item">
+                          <span class="detail-label">Arrival</span>
+                          <span class="detail-value detail-datetime" data-ts={item.rawPlan.end_timestamp}></span>
+                        </div>
+                        <div class="detail-item">
+                          <span class="detail-label">Progress</span>
+                          <span class="detail-value live-progress" data-start={item.rawPlan.start_timestamp} data-end={item.rawPlan.end_timestamp}>--</span>
+                        </div>
+                        <div class="detail-item">
+                          <span class="detail-label">Shuttle Position</span>
+                          <code class="detail-value live-coords"
+                            data-ox={item.originCoords.x} data-oy={item.originCoords.y} data-oz={item.originCoords.z}
+                            data-dx={item.destCoords.x} data-dy={item.destCoords.y} data-dz={item.destCoords.z}
+                            data-start={item.rawPlan.start_timestamp} data-end={item.rawPlan.end_timestamp}>--</code>
+                        </div>
+                      </div>
+                      <div class="detail-section">
+                        <h4>Traffic Controllers</h4>
+                        <div class="controller-list">
+                          {item.controllers.map((c: any) => (
+                            <span class="controller-chip"><a href={c.url}>{c.name}</a></span>
+                          ))}
+                        </div>
+                      </div>
+                      <div class="detail-section">
+                        <h4>Traffic Control Log</h4>
+                        <div class="tc-log" data-log-for={item.id}>
+                          <div class="tc-log-empty">No messages yet</div>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                </>
               ))
             }
           </tbody>
@@ -765,6 +823,8 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
 
         if (window.removeShipFromScene)
           window.removeShipFromScene(row.dataset.planId);
+        const _detailRow = document.querySelector(`tr[data-detail-for="${row.dataset.planId}"]`);
+        if (_detailRow) _detailRow.remove();
         row.remove();
         if (trafficTbody.children.length === 0) {
           trafficTable.classList.add("hidden");
@@ -786,6 +846,171 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
       const trafficTbody = document.getElementById("traffic-tbody");
       const trafficEmpty = document.getElementById("traffic-empty");
 
+      // --- Expandable detail row helpers ---
+
+      // URL-to-name mapping for client-side use
+      const urlNameMap = new Map();
+      document.querySelectorAll('.warp-links a').forEach(a => {
+        urlNameMap.set(a.href.replace(/\/$/, ''), a.dataset.name);
+      });
+      const localLandingSite = document.body.dataset.landingSite;
+      const localPlanetName = document.querySelector('h1').textContent.trim();
+      if (localLandingSite) urlNameMap.set(localLandingSite.replace(/\/$/, ''), localPlanetName);
+
+      function getNameForUrl(url) {
+        const normalized = url.replace(/\/$/, '');
+        if (urlNameMap.has(normalized)) return urlNameMap.get(normalized);
+        try { const o = new URL(url).origin; if (urlNameMap.has(o)) return urlNameMap.get(o); } catch {}
+        try { return new URL(url).hostname; } catch { return url; }
+      }
+
+      // Per-plan event log
+      const planEventLogs = new Map();
+
+      function addPlanEvent(planId, event) {
+        if (!planEventLogs.has(planId)) planEventLogs.set(planId, []);
+        planEventLogs.get(planId).push(event);
+        const logEl = document.querySelector(`.tc-log[data-log-for="${planId}"]`);
+        if (logEl && !logEl.closest('.detail-row.hidden')) renderPlanLog(logEl, planId);
+      }
+
+      function renderPlanLog(logEl, planId) {
+        const events = planEventLogs.get(planId) || [];
+        if (events.length === 0) {
+          logEl.innerHTML = '<div class="tc-log-empty">No messages yet</div>';
+          return;
+        }
+        logEl.innerHTML = events.map(e => {
+          const time = new Date(e.timestamp || Date.now()).toLocaleTimeString();
+          const planet = e.planet || 'Unknown';
+          return `<div class="tc-log-entry"><span class="log-time">[${time}]</span> <span class="log-type ${e.type || ''}">${e.type || 'EVENT'}</span> <span style="color:var(--warp-accent)">@${planet}</span></div>`;
+        }).join('');
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function formatDateTime(ts) {
+        const d = new Date(ts);
+        return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString();
+      }
+
+      const fmtCoord = (n) => n.toFixed(2).padStart(6, '0');
+
+      // Create detail row for dynamically added traffic rows
+      function createDetailRow(planId, plan, originCoords, destCoords) {
+        const tr = document.createElement('tr');
+        tr.className = 'detail-row hidden';
+        tr.dataset.detailFor = planId;
+
+        const controllerUrls = plan.traffic_controllers || Object.keys(plan.signatures || {});
+        const controllers = controllerUrls.map(url => {
+          const name = getNameForUrl(url);
+          return `<span class="controller-chip"><a href="${url}">${name}</a></span>`;
+        }).join('');
+
+        const originName = getNameForUrl(plan.origin_url);
+        const destName = getNameForUrl(plan.destination_url);
+
+        tr.innerHTML = `<td colspan="4"><div class="plan-details">
+          <div class="detail-grid">
+            <div class="detail-item">
+              <span class="detail-label">Source</span>
+              <span class="detail-value"><a class="planet-link" href="${plan.origin_url}">${originName}</a></span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Destination</span>
+              <span class="detail-value"><a class="planet-link" href="${plan.destination_url}">${destName}</a></span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Departure</span>
+              <span class="detail-value">${formatDateTime(plan.start_timestamp)}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Arrival</span>
+              <span class="detail-value">${formatDateTime(plan.end_timestamp)}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Progress</span>
+              <span class="detail-value live-progress" data-start="${plan.start_timestamp}" data-end="${plan.end_timestamp}">--</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Shuttle Position</span>
+              <code class="detail-value live-coords" data-ox="${originCoords.x}" data-oy="${originCoords.y}" data-oz="${originCoords.z}" data-dx="${destCoords.x}" data-dy="${destCoords.y}" data-dz="${destCoords.z}" data-start="${plan.start_timestamp}" data-end="${plan.end_timestamp}">--</code>
+            </div>
+          </div>
+          <div class="detail-section">
+            <h4>Traffic Controllers</h4>
+            <div class="controller-list">${controllers}</div>
+          </div>
+          <div class="detail-section">
+            <h4>Traffic Control Log</h4>
+            <div class="tc-log" data-log-for="${planId}">
+              <div class="tc-log-empty">No messages yet</div>
+            </div>
+          </div>
+        </div></td>`;
+
+        return tr;
+      }
+
+      // Toggle expand/collapse of detail row
+      function toggleDetailRow(planId) {
+        const detailRow = document.querySelector(`tr[data-detail-for="${planId}"]`);
+        const mainRow = document.querySelector(`tr[data-plan-id="${planId}"]:not(.detail-row)`);
+        if (!detailRow || !mainRow) return;
+
+        const isHidden = detailRow.classList.contains('hidden');
+        detailRow.classList.toggle('hidden');
+        mainRow.classList.toggle('expanded');
+
+        if (isHidden) {
+          const logEl = detailRow.querySelector('.tc-log');
+          if (logEl) renderPlanLog(logEl, planId);
+          updateLiveDetails();
+        }
+      }
+
+      // Delegate click on traffic tbody
+      trafficTbody.addEventListener('click', (e) => {
+        const row = e.target.closest('tr[data-plan-id]:not(.detail-row)');
+        if (!row) return;
+        if (e.target.closest('a')) return;
+        toggleDetailRow(row.dataset.planId);
+      });
+
+      // Real-time updates for progress and shuttle coordinates
+      function updateLiveDetails() {
+        const now = Date.now();
+        document.querySelectorAll('.live-progress').forEach(el => {
+          const start = parseInt(el.dataset.start);
+          const end = parseInt(el.dataset.end);
+          const progress = Math.max(0, Math.min(1, (now - start) / (end - start)));
+          el.textContent = (progress * 100).toFixed(1) + '%';
+          el.classList.toggle('live-value', progress > 0 && progress < 1);
+        });
+        document.querySelectorAll('.live-coords').forEach(el => {
+          const ox = parseFloat(el.dataset.ox), oy = parseFloat(el.dataset.oy), oz = parseFloat(el.dataset.oz);
+          const dx = parseFloat(el.dataset.dx), dy = parseFloat(el.dataset.dy), dz = parseFloat(el.dataset.dz);
+          const start = parseInt(el.dataset.start), end = parseInt(el.dataset.end);
+          const progress = Math.max(0, Math.min(1, (now - start) / (end - start)));
+          const cx = ox + (dx - ox) * progress;
+          const cy = oy + (dy - oy) * progress;
+          const cz = oz + (dz - oz) * progress;
+          el.textContent = `${fmtCoord(cx)}:${fmtCoord(cy)}:${fmtCoord(cz)}`;
+          el.classList.toggle('live-value', progress > 0 && progress < 1);
+        });
+      }
+
+      // Initialize date/time labels for server-rendered detail rows
+      document.querySelectorAll('.detail-datetime[data-ts]').forEach(el => {
+        el.textContent = formatDateTime(parseInt(el.dataset.ts));
+      });
+
+      // Update live details every second
+      setInterval(updateLiveDetails, 1000);
+      updateLiveDetails();
+
+      // --- End expandable detail row helpers ---
+
       const addIncomingRow = (plan, originCoordsFormatted, originName) => {
         if (Date.now() >= plan.end_timestamp) return; // Already finished — SSR rendered it in archive
         if (document.querySelector(`tr[data-plan-id="${plan.id}"]`)) return;
@@ -802,7 +1027,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         tr.dataset.locationCoords = originCoordsFormatted;
         tr.dataset.locationUrl = plan.origin_url;
         tr.innerHTML = `
-                <td class="ship-id">${plan.ship_id}</td>
+                <td class="ship-id"><span class="expand-indicator">&#9654;</span> ${plan.ship_id}</td>
                 <td><span class="status-label">INBOUND</span></td>
                 <td class="location"><span class="dir-from">▼</span> from: <a class="planet-link" href="${plan.origin_url}">${displayName}</a><br/><code class="coord-sm">${originCoordsFormatted}</code></td>
                 <td class="eta" data-filed="${filedAt}" data-start="${plan.start_timestamp}" data-end="${plan.end_timestamp}" data-type="incoming">
@@ -810,6 +1035,11 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                     <div class="eta-bar-track"><div class="eta-bar-fill"></div></div>
                 </td>`;
         trafficTbody.appendChild(tr);
+        const [_ox, _oy, _oz] = (originCoordsFormatted || "0:0:0").split(":").map(parseFloat);
+        const _inDetailTr = createDetailRow(plan.id, plan,
+          { x: _ox, y: _oy, z: _oz },
+          { x: parseFloat(document.body.dataset.myX), y: parseFloat(document.body.dataset.myY), z: parseFloat(document.body.dataset.myZ) });
+        tr.after(_inDetailTr);
         trafficEmpty.classList.add("hidden");
         trafficTable.classList.remove("hidden");
         if (window.addShipToScene && originCoordsFormatted) {
@@ -839,7 +1069,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         tr.dataset.locationCoords = currentTarget.formatted;
         tr.dataset.locationUrl = plan.destination_url;
         tr.innerHTML = `
-                <td class="ship-id">${plan.ship_id}</td>
+                <td class="ship-id"><span class="expand-indicator">&#9654;</span> ${plan.ship_id}</td>
                 <td><span class="status-label">${plan.status}</span></td>
                 <td class="location"><span class="dir-to">▲</span> to: <a class="planet-link" href="${plan.destination_url}">${currentTarget.name || destHostname}</a><br/><code class="coord-sm">${currentTarget.formatted}</code></td>
                 <td class="eta" data-filed="${filedAt}" data-start="${plan.start_timestamp}" data-end="${plan.end_timestamp}" data-type="outgoing">
@@ -847,6 +1077,10 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                     <div class="eta-bar-track"><div class="eta-bar-fill"></div></div>
                 </td>`;
         trafficTbody.appendChild(tr);
+        const _outDetailTr = createDetailRow(plan.id, plan,
+          { x: parseFloat(document.body.dataset.myX), y: parseFloat(document.body.dataset.myY), z: parseFloat(document.body.dataset.myZ) },
+          { x: currentTarget.x, y: currentTarget.y, z: currentTarget.z });
+        tr.after(_outDetailTr);
         trafficEmpty.classList.add("hidden");
         trafficTable.classList.remove("hidden");
         if (window.addShipToScene) {
@@ -1023,6 +1257,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
             const msg = JSON.parse(e.data);
             if (msg.type === "history") {
               msg.data.forEach((event) => {
+                if (event.plan_id) addPlanEvent(event.plan_id, event);
                 if (event.type === "INCOMING_REGISTERED" && event.plan) {
                   addIncomingRow(
                     event.plan,
@@ -1036,6 +1271,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                 }
               });
             } else if (msg.type === "INCOMING_REGISTERED" && msg.plan) {
+              if (msg.plan_id) addPlanEvent(msg.plan_id, msg);
               addIncomingRow(
                 msg.plan,
                 msg.origin_coords_formatted ?? "",
@@ -1044,6 +1280,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
             } else if (msg.type === "MANIFEST_CACHED") {
               applyManifestCached(msg);
             } else {
+              if (msg.plan_id) addPlanEvent(msg.plan_id, msg);
               applyEvent(msg);
             }
           };

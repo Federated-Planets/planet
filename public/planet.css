@@ -919,3 +919,171 @@ footer a {
   color: #4a90e2;
   text-decoration: none;
 }
+
+/* Expandable detail rows */
+.traffic-table tr[data-plan-id] {
+  cursor: pointer;
+}
+
+.traffic-table tr[data-plan-id]:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.expand-indicator {
+  display: inline-block;
+  width: 0.8em;
+  font-size: 0.6rem;
+  transition: transform 0.2s;
+  color: var(--warp-text-dim);
+  vertical-align: middle;
+  margin-right: 0.3em;
+}
+
+tr.expanded .expand-indicator {
+  transform: rotate(90deg);
+}
+
+.detail-row {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.detail-row.hidden {
+  display: none;
+}
+
+.detail-row > td {
+  padding: 0 !important;
+  border-bottom: 1px solid rgba(74, 144, 226, 0.15);
+}
+
+.plan-details {
+  padding: 0.8rem 1rem;
+  font-size: 0.8rem;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem 1.5rem;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.detail-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--warp-text-dim);
+  font-weight: bold;
+}
+
+.detail-value {
+  color: var(--warp-text);
+  font-size: 0.8rem;
+}
+
+.detail-value a {
+  color: var(--warp-accent);
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.detail-value a:hover {
+  text-decoration: underline;
+}
+
+.detail-section {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.detail-section h4 {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--warp-text-dim);
+  margin: 0 0 0.5rem 0;
+}
+
+.controller-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.controller-chip {
+  background: rgba(74, 144, 226, 0.1);
+  border: 1px solid rgba(74, 144, 226, 0.2);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.controller-chip a {
+  color: var(--warp-accent);
+  text-decoration: none;
+}
+
+.controller-chip a:hover {
+  text-decoration: underline;
+}
+
+.tc-log {
+  max-height: 150px;
+  overflow-y: auto;
+  font-family: "Courier New", monospace;
+  font-size: 0.7rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+}
+
+.tc-log-entry {
+  padding: 0.2rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: var(--warp-text-dim);
+}
+
+.tc-log-entry .log-time {
+  color: #666;
+  margin-right: 0.4rem;
+}
+
+.tc-log-entry .log-type {
+  font-weight: bold;
+  margin-right: 0.4rem;
+}
+
+.tc-log-entry .log-type.PREPARE_PLAN {
+  color: #f1c40f;
+}
+.tc-log-entry .log-type.QUORUM_REACHED {
+  color: #2ecc71;
+}
+.tc-log-entry .log-type.INCOMING_REGISTERED {
+  color: #9b59b6;
+}
+.tc-log-entry .log-type.INITIATE_TRAVEL {
+  color: #e67e22;
+}
+.tc-log-entry .log-type.API_REQUEST {
+  color: #3498db;
+}
+
+.tc-log-empty {
+  color: #555;
+  font-style: italic;
+}
+
+.live-value {
+  color: #2ecc71;
+}
+
+@media (max-width: 600px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
