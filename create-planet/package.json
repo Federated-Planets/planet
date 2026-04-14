@@ -1,6 +1,6 @@
 {
   "name": "create-planet",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Scaffold a new Federated Planets planet",
   "type": "module",
   "bin": {
