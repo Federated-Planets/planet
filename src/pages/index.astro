@@ -540,12 +540,12 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                           <span class="detail-value detail-datetime" data-ts={item.end_timestamp}></span>
                         </div>
                         <div class="detail-item">
-                          <span class="detail-label">Progress</span>
-                          <span class="detail-value">100% (completed)</span>
+                          <span class="detail-label">Status</span>
+                          <span class="detail-value">Landed</span>
                         </div>
                         <div class="detail-item">
-                          <span class="detail-label">Shuttle Position</span>
-                          <code class="detail-value">{item.destCoords.formatted}</code>
+                          <span class="detail-label">Travel Time</span>
+                          <span class="detail-value">{(Math.sqrt(Math.pow(item.destCoords.x - item.originCoords.x, 2) + Math.pow(item.destCoords.y - item.originCoords.y, 2) + Math.pow(item.destCoords.z - item.originCoords.z, 2)) / 100).toFixed(2)} FY</span>
                         </div>
                       </div>
                       <div class="detail-section">
@@ -893,27 +893,33 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         if (trafficDetail) {
           trafficDetail.classList.add("hidden");
           const progress = trafficDetail.querySelector(".live-progress");
+          const coords = trafficDetail.querySelector(".live-coords");
+          let travelFY = null;
+          if (coords) {
+            const ox = parseFloat(coords.dataset.ox);
+            const oy = parseFloat(coords.dataset.oy);
+            const oz = parseFloat(coords.dataset.oz);
+            const dx = parseFloat(coords.dataset.dx);
+            const dy = parseFloat(coords.dataset.dy);
+            const dz = parseFloat(coords.dataset.dz);
+            travelFY =
+              Math.sqrt((dx - ox) ** 2 + (dy - oy) ** 2 + (dz - oz) ** 2) / 100;
+            coords.closest(".detail-item")?.remove();
+          }
           if (progress) {
             progress.classList.remove("live-progress", "live-value");
             delete progress.dataset.start;
             delete progress.dataset.end;
-            progress.textContent = "100% (completed)";
-          }
-          const coords = trafficDetail.querySelector(".live-coords");
-          if (coords) {
-            const dx = parseFloat(coords.dataset.dx);
-            const dy = parseFloat(coords.dataset.dy);
-            const dz = parseFloat(coords.dataset.dz);
-            coords.classList.remove("live-coords", "live-value");
-            delete coords.dataset.ox;
-            delete coords.dataset.oy;
-            delete coords.dataset.oz;
-            delete coords.dataset.dx;
-            delete coords.dataset.dy;
-            delete coords.dataset.dz;
-            delete coords.dataset.start;
-            delete coords.dataset.end;
-            coords.textContent = `${fmtCoord(dx)}:${fmtCoord(dy)}:${fmtCoord(dz)}`;
+            progress.textContent = "Landed";
+            const progressItem = progress.closest(".detail-item");
+            const progressLabel = progressItem?.querySelector(".detail-label");
+            if (progressLabel) progressLabel.textContent = "Status";
+            if (travelFY !== null && progressItem) {
+              const travelItem = document.createElement("div");
+              travelItem.className = "detail-item";
+              travelItem.innerHTML = `<span class="detail-label">Travel Time</span><span class="detail-value">${travelFY.toFixed(2)} FY</span>`;
+              progressItem.after(travelItem);
+            }
           }
           archiveRow.after(trafficDetail);
         }
