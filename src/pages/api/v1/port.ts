@@ -181,10 +181,11 @@ async function discoverSpacePort(
   TRAFFIC_CONTROL: DurableObjectNamespace,
 ): Promise<PlanetManifest | null> {
   try {
+    const cacheKey = new URL(landingSiteUrl).origin;
     const cached = await doQuery(
       TRAFFIC_CONTROL,
       `SELECT * FROM traffic_controllers WHERE planet_url = ? AND last_manifest_fetch > ?`,
-      [landingSiteUrl, Date.now() - 3600000],
+      [cacheKey, Date.now() - 3600000],
     );
 
     if (cached.length > 0) {
@@ -202,11 +203,11 @@ async function discoverSpacePort(
       await doExec(
         TRAFFIC_CONTROL,
         `INSERT OR REPLACE INTO traffic_controllers (planet_url, name, space_port_url, last_manifest_fetch) VALUES (?, ?, ?, ?)`,
-        [landingSiteUrl, fallbackName, "", Date.now()],
+        [cacheKey, fallbackName, "", Date.now()],
       );
       broadcastEvent(TRAFFIC_CONTROL, {
         type: "MANIFEST_CACHED",
-        planet_url: landingSiteUrl,
+        planet_url: cacheKey,
         has_space_port: false,
       });
     };
@@ -252,12 +253,12 @@ async function discoverSpacePort(
     await doExec(
       TRAFFIC_CONTROL,
       `INSERT OR REPLACE INTO traffic_controllers (planet_url, name, space_port_url, last_manifest_fetch) VALUES (?, ?, ?, ?)`,
-      [planet.landing_site, planet.name, planet.space_port, Date.now()],
+      [cacheKey, planet.name, planet.space_port, Date.now()],
     );
 
     broadcastEvent(TRAFFIC_CONTROL, {
       type: "MANIFEST_CACHED",
-      planet_url: planet.landing_site,
+      planet_url: cacheKey,
       has_space_port: true,
     });
 
