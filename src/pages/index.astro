@@ -167,13 +167,13 @@ let portStatusMap = new Map<string, "confirmed" | "no-port">();
 
 if (TRAFFIC_CONTROL) {
   try {
-    const warpUrls = WARP_LINKS.map((l: any) => l.url);
-    if (warpUrls.length > 0) {
-      const placeholders = warpUrls.map(() => "?").join(",");
+    const warpOrigins = WARP_LINKS.map((l: any) => new URL(l.url).origin);
+    if (warpOrigins.length > 0) {
+      const placeholders = warpOrigins.map(() => "?").join(",");
       const cachedPorts = await doQuery(
         TRAFFIC_CONTROL,
         `SELECT planet_url, space_port_url FROM traffic_controllers WHERE planet_url IN (${placeholders}) AND last_manifest_fetch > ?`,
-        [...warpUrls, Date.now() - 3600000],
+        [...warpOrigins, Date.now() - 3600000],
       );
       for (const row of cachedPorts || []) {
         const r = row as any;
@@ -193,7 +193,9 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
     ...link,
     id: index + 1,
     coords: calculateCoordinates(link.url),
-    portStatus: portStatusMap.get(link.url) || "unknown",
+    origin: new URL(link.url).origin,
+    portStatus:
+      portStatusMap.get(new URL(link.url).origin) || "unknown",
   };
 });
 ---
@@ -506,21 +508,38 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                 >
                   {link.name}
                 </a>
-                <span style="display:flex;align-items:center;gap:0.5rem;flex:0 0 auto;">
-                  <code class="coord" data-id={link.id}>
-                    {link.coords.formatted}
-                  </code>
-                  {link.portStatus !== "no-port" && (
-                    <button
-                      class={`launch-btn ${link.portStatus === "confirmed" ? "launch-confirmed" : "launch-unknown"}`}
-                      type="button"
-                      data-planet-url={link.url}
-                      aria-label={`Launch to ${link.name}`}
-                    >
-                      &#9654;
-                    </button>
-                  )}
-                </span>
+                {(() => {
+                  const launchTitle =
+                    link.portStatus === "no-port"
+                      ? `No space port at ${link.name} — shuttle launch unavailable`
+                      : link.portStatus === "confirmed"
+                        ? `Click to launch a shuttle to ${link.name}`
+                        : `Click to launch a shuttle to ${link.name} (port status unknown)`;
+                  return (
+                    <span style="display:flex;align-items:center;gap:0.5rem;flex:0 0 auto;">
+                      <code class="coord" data-id={link.id} title={launchTitle}>
+                        {link.coords.formatted}
+                      </code>
+                      <button
+                        class={`launch-btn ${
+                          link.portStatus === "confirmed"
+                            ? "launch-confirmed"
+                            : link.portStatus === "no-port"
+                              ? "launch-disabled"
+                              : "launch-unknown"
+                        }`}
+                        type="button"
+                        disabled={link.portStatus === "no-port"}
+                        data-planet-url={link.url}
+                        data-planet-origin={link.origin}
+                        title={launchTitle}
+                        aria-label={launchTitle}
+                      >
+                        &#128640;
+                      </button>
+                    </span>
+                  );
+                })()}
               </li>
             ))
           }
@@ -967,19 +986,31 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
 
       const applyManifestCached = (event) => {
         if (!event.planet_url) return;
-        const link = document.querySelector(
-          `.warp-links a[href="${event.planet_url}"]`,
+        const btn = document.querySelector(
+          `.launch-btn[data-planet-origin="${event.planet_url}"]`,
         );
-        if (!link) return;
-        const btn = link.closest("li")?.querySelector(".launch-btn");
+        if (!btn) return;
+        const link = btn
+          .closest("li")
+          ?.querySelector("a[data-name]");
+        const name = link?.getAttribute("data-name") || event.planet_url;
+        const coord = btn.closest("span")?.querySelector(".coord");
+        btn.classList.remove("launch-unknown");
+        let title;
         if (event.has_space_port) {
-          if (btn) {
-            btn.classList.remove("launch-unknown");
-            btn.classList.add("launch-confirmed");
-          }
+          btn.classList.remove("launch-disabled");
+          btn.classList.add("launch-confirmed");
+          btn.disabled = false;
+          title = `Click to launch a shuttle to ${name}`;
         } else {
-          if (btn) btn.remove();
+          btn.classList.remove("launch-confirmed");
+          btn.classList.add("launch-disabled");
+          btn.disabled = true;
+          title = `No space port at ${name} — shuttle launch unavailable`;
         }
+        btn.setAttribute("title", title);
+        btn.setAttribute("aria-label", title);
+        if (coord) coord.setAttribute("title", title);
       };
 
       (() => {
