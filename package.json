@@ -1,6 +1,6 @@
 {
   "name": "@federated-planets/planet",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "A decentralized space exploration game where every planet is a sovereign website.",
   "scripts": {
     "dev": "npm run build && wrangler dev -c wrangler.dev.jsonc",
