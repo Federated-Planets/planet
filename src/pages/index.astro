@@ -98,6 +98,7 @@ if (TRAFFIC_CONTROL) {
       ...(archiveRecords || []).flatMap((p: any) => [
         p.origin_url,
         p.destination_url,
+        ...Object.keys(JSON.parse(p.signatures || '{}')),
       ]),
     ];
     const uniqueUrls = [...new Set(allPlanUrls)].filter(
@@ -154,6 +155,7 @@ if (TRAFFIC_CONTROL) {
       const locationUrl =
         p.destination_url === landingSite ? p.origin_url : p.destination_url;
       return {
+        plan_id: p.id,
         ship_id: p.ship_id,
         event: p.destination_url === landingSite ? "ARRIVED" : "DEPARTED",
         location_name:
@@ -163,6 +165,19 @@ if (TRAFFIC_CONTROL) {
           p.destination_url === landingSite
             ? p.end_timestamp
             : p.start_timestamp,
+        origin_url: p.origin_url,
+        destination_url: p.destination_url,
+        start_timestamp: p.start_timestamp,
+        end_timestamp: p.end_timestamp,
+        originName: p.origin_url === landingSite ? planetName : (warpNameMap.get(p.origin_url) ?? new URL(p.origin_url).hostname),
+        destName: p.destination_url === landingSite ? planetName : (warpNameMap.get(p.destination_url) ?? new URL(p.destination_url).hostname),
+        originCoords: calculateCoordinates(p.origin_url),
+        destCoords: calculateCoordinates(p.destination_url),
+        controllers: Object.keys(JSON.parse(p.signatures || '{}')).map((url: string) => ({
+          url,
+          name: url === landingSite ? planetName : (warpNameMap.get(url) ?? new URL(url).hostname),
+        })),
+        rawPlan: p,
       };
     });
   } catch (e) {
@@ -476,10 +491,12 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
           <tbody id="archive-tbody">
             {
               archive.map((item: any, i: number) => (
+                <>
                 <tr
                   class={`${item.event.toLowerCase()}${i >= 5 ? " archive-extra" : ""}`}
+                  data-plan-id={item.plan_id}
                 >
-                  <td class="ship-id">{item.ship_id}</td>
+                  <td class="ship-id"><span class="expand-indicator">&#9654;</span> {item.ship_id}</td>
                   <td>
                     <span class="event-label">{item.event}</span>
                   </td>
@@ -502,6 +519,53 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                     {new Date(item.timestamp).toLocaleTimeString()}
                   </td>
                 </tr>
+                <tr class={`detail-row hidden${i >= 5 ? " archive-extra" : ""}`} data-detail-for={item.plan_id}>
+                  <td colspan="4">
+                    <div class="plan-details">
+                      <div class="detail-grid">
+                        <div class="detail-item">
+                          <span class="detail-label">Source</span>
+                          <span class="detail-value"><a class="planet-link" href={item.origin_url}>{item.originName}</a></span>
+                        </div>
+                        <div class="detail-item">
+                          <span class="detail-label">Destination</span>
+                          <span class="detail-value"><a class="planet-link" href={item.destination_url}>{item.destName}</a></span>
+                        </div>
+                        <div class="detail-item">
+                          <span class="detail-label">Departure</span>
+                          <span class="detail-value detail-datetime" data-ts={item.start_timestamp}></span>
+                        </div>
+                        <div class="detail-item">
+                          <span class="detail-label">Arrival</span>
+                          <span class="detail-value detail-datetime" data-ts={item.end_timestamp}></span>
+                        </div>
+                        <div class="detail-item">
+                          <span class="detail-label">Progress</span>
+                          <span class="detail-value">100% (completed)</span>
+                        </div>
+                        <div class="detail-item">
+                          <span class="detail-label">Shuttle Position</span>
+                          <code class="detail-value">{item.destCoords.formatted}</code>
+                        </div>
+                      </div>
+                      <div class="detail-section">
+                        <h4>Traffic Controllers</h4>
+                        <div class="controller-list">
+                          {item.controllers.map((c: any) => (
+                            <span class="controller-chip"><a href={c.url}>{c.name}</a></span>
+                          ))}
+                        </div>
+                      </div>
+                      <div class="detail-section">
+                        <h4>Traffic Control Log</h4>
+                        <div class="tc-log" data-log-for={item.plan_id}>
+                          <div class="tc-log-empty">No messages yet</div>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                </>
               ))
             }
           </tbody>
@@ -736,18 +800,23 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
       let archivePage = 0;
 
       const renderArchive = () => {
-        const rows = Array.from(archiveTbody.querySelectorAll("tr"));
+        const rows = Array.from(
+          archiveTbody.querySelectorAll("tr[data-plan-id]:not(.detail-row)"),
+        );
         const totalPages = Math.ceil(rows.length / ARCHIVE_PAGE_SIZE);
         rows.forEach((r, i) => {
+          let hidden;
           if (!archiveExpanded) {
-            r.classList.toggle("archive-extra", i >= ARCHIVE_COLLAPSED);
+            hidden = i >= ARCHIVE_COLLAPSED;
           } else {
             const pageStart = archivePage * ARCHIVE_PAGE_SIZE;
-            r.classList.toggle(
-              "archive-extra",
-              i < pageStart || i >= pageStart + ARCHIVE_PAGE_SIZE,
-            );
+            hidden = i < pageStart || i >= pageStart + ARCHIVE_PAGE_SIZE;
           }
+          r.classList.toggle("archive-extra", hidden);
+          const detail = archiveTbody.querySelector(
+            `tr.detail-row[data-detail-for="${r.dataset.planId}"]`,
+          );
+          if (detail) detail.classList.toggle("archive-extra", hidden);
         });
         if (archiveExpanded) {
           archiveSeeAll.textContent = "See recent";
@@ -793,6 +862,7 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         const locationCoords = row.dataset.locationCoords || "";
         const locationUrl = row.dataset.locationUrl || "";
         const shipId = row.dataset.shipId || "";
+        const planId = row.dataset.planId || "";
         const end = parseInt(row.querySelector(".eta")?.dataset.end || "0");
         const timestamp = new Date(end || Date.now()).toLocaleTimeString();
         const isDeparted = event === "DEPARTED";
@@ -805,8 +875,9 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
 
         const archiveRow = document.createElement("tr");
         archiveRow.className = event.toLowerCase();
+        if (planId) archiveRow.dataset.planId = planId;
         archiveRow.innerHTML = `
-                <td class="ship-id">${shipId}</td>
+                <td class="ship-id"><span class="expand-indicator">&#9654;</span> ${shipId}</td>
                 <td><span class="event-label">${event}</span></td>
                 <td class="location">${dirSpan} ${locationLink}<br/><code class="coord-sm">${locationCoords}</code></td>
                 <td class="timestamp">${timestamp}</td>`;
@@ -815,16 +886,55 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         archiveTable.classList.remove("hidden");
         archiveEmpty.classList.add("hidden");
 
-        // Keep archive to last 20 entries
-        while (archiveTbody.children.length > 20)
-          archiveTbody.removeChild(archiveTbody.lastChild);
+        // Repurpose the traffic detail row as the archive detail row
+        const trafficDetail = document.querySelector(
+          `tr.detail-row[data-detail-for="${planId}"]`,
+        );
+        if (trafficDetail) {
+          trafficDetail.classList.add("hidden");
+          const progress = trafficDetail.querySelector(".live-progress");
+          if (progress) {
+            progress.classList.remove("live-progress", "live-value");
+            delete progress.dataset.start;
+            delete progress.dataset.end;
+            progress.textContent = "100% (completed)";
+          }
+          const coords = trafficDetail.querySelector(".live-coords");
+          if (coords) {
+            const dx = parseFloat(coords.dataset.dx);
+            const dy = parseFloat(coords.dataset.dy);
+            const dz = parseFloat(coords.dataset.dz);
+            coords.classList.remove("live-coords", "live-value");
+            delete coords.dataset.ox;
+            delete coords.dataset.oy;
+            delete coords.dataset.oz;
+            delete coords.dataset.dx;
+            delete coords.dataset.dy;
+            delete coords.dataset.dz;
+            delete coords.dataset.start;
+            delete coords.dataset.end;
+            coords.textContent = `${fmtCoord(dx)}:${fmtCoord(dy)}:${fmtCoord(dz)}`;
+          }
+          archiveRow.after(trafficDetail);
+        }
+
+        // Keep archive to last 20 main rows (each with its detail sibling)
+        const mainArchiveRows = archiveTbody.querySelectorAll(
+          "tr[data-plan-id]:not(.detail-row)",
+        );
+        for (let k = mainArchiveRows.length - 1; k >= 20; k--) {
+          const oldMain = mainArchiveRows[k];
+          const oldDetail = archiveTbody.querySelector(
+            `tr.detail-row[data-detail-for="${oldMain.dataset.planId}"]`,
+          );
+          if (oldDetail) oldDetail.remove();
+          oldMain.remove();
+        }
 
         renderArchive();
 
         if (window.removeShipFromScene)
           window.removeShipFromScene(row.dataset.planId);
-        const _detailRow = document.querySelector(`tr[data-detail-for="${row.dataset.planId}"]`);
-        if (_detailRow) _detailRow.remove();
         row.remove();
         if (trafficTbody.children.length === 0) {
           trafficTable.classList.add("hidden");
@@ -971,6 +1081,14 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
 
       // Delegate click on traffic tbody
       trafficTbody.addEventListener('click', (e) => {
+        const row = e.target.closest('tr[data-plan-id]:not(.detail-row)');
+        if (!row) return;
+        if (e.target.closest('a')) return;
+        toggleDetailRow(row.dataset.planId);
+      });
+
+      // Delegate click on archive tbody
+      archiveTbody.addEventListener('click', (e) => {
         const row = e.target.closest('tr[data-plan-id]:not(.detail-row)');
         if (!row) return;
         if (e.target.closest('a')) return;

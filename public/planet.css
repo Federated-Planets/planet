@@ -921,11 +921,13 @@ footer a {
 }
 
 /* Expandable detail rows */
-.traffic-table tr[data-plan-id] {
+.traffic-table tr[data-plan-id],
+.archive-table tr[data-plan-id] {
   cursor: pointer;
 }
 
-.traffic-table tr[data-plan-id]:hover {
+.traffic-table tr[data-plan-id]:hover,
+.archive-table tr[data-plan-id]:hover {
   background: rgba(255, 255, 255, 0.03);
 }
 

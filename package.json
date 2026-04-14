@@ -20,8 +20,8 @@
     "postversion": "git push && git push --tags"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^13.1.4",
-    "astro": "^6.1.1",
+    "@astrojs/cloudflare": "^13.1.9",
+    "astro": "^6.1.6",
     "cheerio": "^1.2.0",
     "md5": "^2.3.0",
     "zod": "^3.25.76"
@@ -37,6 +37,6 @@
     "prettier-plugin-astro": "^0.14.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.2",
-    "wrangler": "^4.78.0"
+    "wrangler": "^4.82.2"
   }
 }
