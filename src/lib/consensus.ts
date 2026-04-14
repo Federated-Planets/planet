@@ -2,7 +2,7 @@ import { CryptoCore } from "./crypto";
 import type { PlanetManifest } from "./travel";
 import { env as cloudflareEnv } from "cloudflare:workers";
 import { PLANET_NAME } from "./config";
-import { doStorage } from "./do-storage";
+import { doSavePlan, doGetPlan } from "./do-storage";
 
 // Robust helper to get simulation variables from any available environment source
 const getSimVar = (name: string): string | undefined => {
@@ -114,10 +114,7 @@ export class ConsensusEngine {
     TRAFFIC_CONTROL: DurableObjectNamespace,
     plan: TravelPlan,
   ) {
-    await doStorage(TRAFFIC_CONTROL, "savePlan", {
-      planId: plan.id,
-      data: JSON.stringify(plan),
-    });
+    await doSavePlan(TRAFFIC_CONTROL, plan.id, JSON.stringify(plan));
   }
 
   /**
@@ -127,7 +124,7 @@ export class ConsensusEngine {
     TRAFFIC_CONTROL: DurableObjectNamespace,
     planId: string,
   ): Promise<TravelPlan | null> {
-    const result: any = await doStorage(TRAFFIC_CONTROL, "getPlan", { planId });
-    return result.data ? JSON.parse(result.data) : null;
+    const data = await doGetPlan(TRAFFIC_CONTROL, planId);
+    return data ? JSON.parse(data) : null;
   }
 }

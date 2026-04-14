@@ -1,5 +1,5 @@
 import { CryptoCore } from "./crypto";
-import { doStorage } from "./do-storage";
+import { doGetIdentity, doSetIdentity } from "./do-storage";
 
 export class PlanetIdentity {
   /**
@@ -10,7 +10,7 @@ export class PlanetIdentity {
     privateKey: CryptoKey;
     publicKeyBase64: string;
   }> {
-    const result: any = await doStorage(TRAFFIC_CONTROL, "getIdentity");
+    const result = await doGetIdentity(TRAFFIC_CONTROL);
 
     if (result.public && result.private) {
       const publicKey = await CryptoCore.importKey(result.public, "public");
@@ -23,10 +23,7 @@ export class PlanetIdentity {
     const publicB64 = await CryptoCore.exportKey(keyPair.publicKey);
     const privateB64 = await CryptoCore.exportKey(keyPair.privateKey);
 
-    await doStorage(TRAFFIC_CONTROL, "setIdentity", {
-      publicKey: publicB64,
-      privateKey: privateB64,
-    });
+    await doSetIdentity(TRAFFIC_CONTROL, publicB64, privateB64);
 
     return {
       publicKey: keyPair.publicKey,

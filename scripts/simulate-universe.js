@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const NUM_PLANETS = 10;
+const NUM_PLANETS = 6;
 const BASE_PORT = 3000;
 const BASE_INSPECTOR_PORT = 19229;
 const OPEN_BROWSER = process.argv.includes("--open");
