@@ -163,11 +163,37 @@ if (TRAFFIC_CONTROL) {
   }
 }
 
+let portStatusMap = new Map<string, "confirmed" | "no-port">();
+
+if (TRAFFIC_CONTROL) {
+  try {
+    const warpUrls = WARP_LINKS.map((l: any) => l.url);
+    if (warpUrls.length > 0) {
+      const placeholders = warpUrls.map(() => "?").join(",");
+      const cachedPorts = await doQuery(
+        TRAFFIC_CONTROL,
+        `SELECT planet_url, space_port_url FROM traffic_controllers WHERE planet_url IN (${placeholders}) AND last_manifest_fetch > ?`,
+        [...warpUrls, Date.now() - 3600000],
+      );
+      for (const row of cachedPorts || []) {
+        const r = row as any;
+        portStatusMap.set(
+          r.planet_url,
+          r.space_port_url ? "confirmed" : "no-port",
+        );
+      }
+    }
+  } catch (e) {
+    console.error("Port status lookup failed.", e);
+  }
+}
+
 const enrichedLinks = WARP_LINKS.map((link, index) => {
   return {
     ...link,
     id: index + 1,
     coords: calculateCoordinates(link.url),
+    portStatus: portStatusMap.get(link.url) || "unknown",
   };
 });
 ---
@@ -480,9 +506,21 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                 >
                   {link.name}
                 </a>
-                <code class="coord" data-id={link.id}>
-                  {link.coords.formatted}
-                </code>
+                <span style="display:flex;align-items:center;gap:0.5rem;flex:0 0 auto;">
+                  <code class="coord" data-id={link.id}>
+                    {link.coords.formatted}
+                  </code>
+                  {link.portStatus !== "no-port" && (
+                    <button
+                      class={`launch-btn ${link.portStatus === "confirmed" ? "launch-confirmed" : "launch-unknown"}`}
+                      type="button"
+                      data-planet-url={link.url}
+                      aria-label={`Launch to ${link.name}`}
+                    >
+                      &#9654;
+                    </button>
+                  )}
+                </span>
               </li>
             ))
           }
@@ -927,6 +965,23 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
         setRowStatus(row, newKey, isScheduled ? "SCHEDULED" : transitLabel);
       };
 
+      const applyManifestCached = (event) => {
+        if (!event.planet_url) return;
+        const link = document.querySelector(
+          `.warp-links a[href="${event.planet_url}"]`,
+        );
+        if (!link) return;
+        const btn = link.closest("li")?.querySelector(".launch-btn");
+        if (event.has_space_port) {
+          if (btn) {
+            btn.classList.remove("launch-unknown");
+            btn.classList.add("launch-confirmed");
+          }
+        } else {
+          if (btn) btn.remove();
+        }
+      };
+
       (() => {
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const connect = () => {
@@ -943,6 +998,8 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                     event.origin_coords_formatted ?? "",
                     event.planet,
                   );
+                } else if (event.type === "MANIFEST_CACHED") {
+                  applyManifestCached(event);
                 } else {
                   applyEvent(event);
                 }
@@ -953,6 +1010,8 @@ const enrichedLinks = WARP_LINKS.map((link, index) => {
                 msg.origin_coords_formatted ?? "",
                 msg.planet,
               );
+            } else if (msg.type === "MANIFEST_CACHED") {
+              applyManifestCached(msg);
             } else {
               applyEvent(msg);
             }
