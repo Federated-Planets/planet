@@ -105,7 +105,12 @@ export const GET: APIRoute = async ({ request }) => {
         status: 400,
       });
     }
-    const manifest = await discoverSpacePort(targetUrl, TRAFFIC_CONTROL);
+    const localPlanet = getLocalPlanetInfo(request.url);
+    const manifest = await discoverSpacePort(
+      targetUrl,
+      TRAFFIC_CONTROL,
+      localPlanet.name,
+    );
     return new Response(JSON.stringify({ has_space_port: manifest !== null }), {
       status: 200,
     });
@@ -115,8 +120,11 @@ export const GET: APIRoute = async ({ request }) => {
     if (!TRAFFIC_CONTROL || WARP_LINKS.length === 0) {
       return new Response(JSON.stringify({ neighbors: [] }), { status: 200 });
     }
+    const localPlanet = getLocalPlanetInfo(request.url);
     const results = await Promise.all(
-      WARP_LINKS.map((l) => discoverSpacePort(l.url, TRAFFIC_CONTROL)),
+      WARP_LINKS.map((l) =>
+        discoverSpacePort(l.url, TRAFFIC_CONTROL, localPlanet.name),
+      ),
     );
     const neighbors = results.filter((n): n is PlanetManifest => n !== null);
     return new Response(JSON.stringify({ neighbors }), { status: 200 });
@@ -158,7 +166,12 @@ export const POST: APIRoute = async ({ request }) => {
       case "register":
         return await handleRegister(request, TRAFFIC_CONTROL, localPlanet);
       case "commit":
-        return await handleCommit(request, TRAFFIC_CONTROL, localPlanet);
+        return await handleCommit(
+          request,
+          TRAFFIC_CONTROL,
+          localPlanet,
+          senderOrigin,
+        );
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }), {
           status: 400,
@@ -179,6 +192,7 @@ export const POST: APIRoute = async ({ request }) => {
 async function discoverSpacePort(
   landingSiteUrl: string,
   TRAFFIC_CONTROL: DurableObjectNamespace,
+  localPlanetName: string,
 ): Promise<PlanetManifest | null> {
   try {
     const cacheKey = new URL(landingSiteUrl).origin;
@@ -207,6 +221,7 @@ async function discoverSpacePort(
       );
       broadcastEvent(TRAFFIC_CONTROL, {
         type: "MANIFEST_CACHED",
+        planet: localPlanetName,
         planet_url: cacheKey,
         has_space_port: false,
       });
@@ -258,6 +273,7 @@ async function discoverSpacePort(
 
     broadcastEvent(TRAFFIC_CONTROL, {
       type: "MANIFEST_CACHED",
+      planet: localPlanetName,
       planet_url: cacheKey,
       has_space_port: true,
     });
@@ -299,8 +315,10 @@ async function handleInitiate(
   const endTimestamp = startTimestamp + travelTimeHours * msPerFY();
 
   const discoveryPromises = [
-    discoverSpacePort(data.destination_url, TRAFFIC_CONTROL),
-    ...WARP_LINKS.map((l) => discoverSpacePort(l.url, TRAFFIC_CONTROL)),
+    discoverSpacePort(data.destination_url, TRAFFIC_CONTROL, localPlanet.name),
+    ...WARP_LINKS.map((l) =>
+      discoverSpacePort(l.url, TRAFFIC_CONTROL, localPlanet.name),
+    ),
   ];
   const [destManifest, ...neighborResults] =
     await Promise.all(discoveryPromises);
@@ -528,7 +546,7 @@ async function handlePrepare(
   await ConsensusEngine.savePlanState(TRAFFIC_CONTROL, plan);
 
   const controllersPromises = plan.traffic_controllers.map((url) =>
-    discoverSpacePort(url, TRAFFIC_CONTROL),
+    discoverSpacePort(url, TRAFFIC_CONTROL, localPlanet.name),
   );
   const controllers = (await Promise.all(controllersPromises)).filter(
     (n): n is PlanetManifest => n !== null,
@@ -677,6 +695,7 @@ async function handleCommit(
   request: Request,
   TRAFFIC_CONTROL: DurableObjectNamespace,
   localPlanet: any,
+  senderOrigin: string,
 ) {
   const incomingPlan = TravelPlanSchema.parse(await request.json());
   const existing =
@@ -687,8 +706,39 @@ async function handleCommit(
     `[${localPlanet.name}] Committing travel plan ${incomingPlan.id} (Existing signatures: ${Object.keys(existing.signatures).length}, New signatures: ${Object.keys(incomingPlan.signatures).length})`,
   );
 
+  const priorSigners = new Set(Object.keys(existing.signatures ?? {}));
+  const newSigners = Object.keys(incomingPlan.signatures).filter(
+    (url) => !priorSigners.has(url),
+  );
+
   existing.signatures = { ...existing.signatures, ...incomingPlan.signatures };
   await ConsensusEngine.savePlanState(TRAFFIC_CONTROL, existing);
+
+  const senderRows = await doQuery(
+    TRAFFIC_CONTROL,
+    `SELECT name FROM traffic_controllers WHERE planet_url = ?`,
+    [senderOrigin],
+  );
+  const senderName =
+    (senderRows[0] as any)?.name ??
+    (() => {
+      try {
+        return new URL(senderOrigin).hostname;
+      } catch {
+        return senderOrigin;
+      }
+    })();
+
+  await broadcastEvent(TRAFFIC_CONTROL, {
+    type: "PLAN_COMMIT_RECEIVED",
+    planet: senderName,
+    received_by: localPlanet.name,
+    plan_id: existing.id,
+    ship_id: existing.ship_id,
+    from: senderOrigin,
+    new_signers: newSigners,
+    total_signatures: Object.keys(existing.signatures).length,
+  });
 
   if (ConsensusEngine.hasQuorum(existing) && existing.status === "PREPARING") {
     // Check if we already archived it to prevent race condition across TCs
@@ -710,6 +760,7 @@ async function handleCommit(
       const destManifest = await discoverSpacePort(
         existing.destination_url,
         TRAFFIC_CONTROL,
+        localPlanet.name,
       );
       if (!destManifest?.space_port) {
         return new Response(
