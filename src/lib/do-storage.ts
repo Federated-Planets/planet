@@ -1,18 +1,9 @@
 /**
- * Helper to call the TrafficControl DO's storage API.
+ * Get the TrafficControl DO stub (RPC interface).
  */
-export async function doStorage(
-  TRAFFIC_CONTROL: DurableObjectNamespace,
-  action: string,
-  data: Record<string, any> = {},
-): Promise<any> {
+function getStub(TRAFFIC_CONTROL: DurableObjectNamespace): any {
   const id = TRAFFIC_CONTROL.idFromName("global");
-  const obj = TRAFFIC_CONTROL.get(id);
-  const res = await obj.fetch("http://do/storage", {
-    method: "POST",
-    body: JSON.stringify({ action, ...data }),
-  });
-  return res.json();
+  return TRAFFIC_CONTROL.get(id);
 }
 
 /**
@@ -23,8 +14,7 @@ export async function doQuery(
   sql: string,
   params: any[] = [],
 ): Promise<any[]> {
-  const result = await doStorage(TRAFFIC_CONTROL, "query", { sql, params });
-  return result.results || [];
+  return getStub(TRAFFIC_CONTROL).query(sql, params);
 }
 
 /**
@@ -35,5 +25,34 @@ export async function doExec(
   sql: string,
   params: any[] = [],
 ): Promise<void> {
-  await doStorage(TRAFFIC_CONTROL, "exec", { sql, params });
+  await getStub(TRAFFIC_CONTROL).exec(sql, params);
+}
+
+export async function doGetIdentity(
+  TRAFFIC_CONTROL: DurableObjectNamespace,
+): Promise<{ public: string | null; private: string | null }> {
+  return getStub(TRAFFIC_CONTROL).getIdentity();
+}
+
+export async function doSetIdentity(
+  TRAFFIC_CONTROL: DurableObjectNamespace,
+  publicKey: string,
+  privateKey: string,
+): Promise<void> {
+  await getStub(TRAFFIC_CONTROL).setIdentity(publicKey, privateKey);
+}
+
+export async function doSavePlan(
+  TRAFFIC_CONTROL: DurableObjectNamespace,
+  planId: string,
+  data: string,
+): Promise<void> {
+  await getStub(TRAFFIC_CONTROL).savePlan(planId, data);
+}
+
+export async function doGetPlan(
+  TRAFFIC_CONTROL: DurableObjectNamespace,
+  planId: string,
+): Promise<string | null> {
+  return getStub(TRAFFIC_CONTROL).getPlan(planId);
 }

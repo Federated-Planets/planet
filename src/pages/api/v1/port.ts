@@ -71,24 +71,14 @@ async function broadcastEvent(
   }
   try {
     const id = TRAFFIC_CONTROL.idFromName("global");
-    const obj = TRAFFIC_CONTROL.get(id);
-    const payload = JSON.stringify({ ...event, timestamp: Date.now() });
-    console.log(`[broadcastEvent] Sending to DO: ${payload}`);
+    const obj = TRAFFIC_CONTROL.get(id) as any;
+    console.log(`[broadcastEvent] Sending to DO: ${JSON.stringify(event)}`);
     // Fire and forget to avoid blocking or crashing on DO errors
-    obj
-      .fetch("http://do/events", {
-        method: "POST",
-        body: payload,
-      })
-      .then((res) => {
-        if (!res.ok)
-          console.warn(`[broadcastEvent] DO responded with ${res.status}`);
-      })
-      .catch((e) =>
-        console.warn(
-          `[broadcastEvent] Background DO broadcast failed: ${e.message}`,
-        ),
-      );
+    obj.postEvent(event).catch((e: any) =>
+      console.warn(
+        `[broadcastEvent] Background DO broadcast failed: ${e.message}`,
+      ),
+    );
   } catch (e: any) {
     console.warn(`[broadcastEvent] Failed to initiate broadcast: ${e.message}`);
   }

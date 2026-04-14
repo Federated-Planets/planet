@@ -45,34 +45,76 @@ export default class TrafficControl extends DurableObject {
     console.log("[TrafficControl] Initialized with SQLite storage");
   }
 
-  async fetch(request: Request) {
-    const url = new URL(request.url);
+  async postEvent(event: any) {
+    const eventWithTimestamp = { ...event, timestamp: Date.now() };
+    const json = JSON.stringify(eventWithTimestamp);
 
-    if (url.pathname === "/events" && request.method === "POST") {
-      const event = await request.json();
-      const eventWithTimestamp = { ...event, timestamp: Date.now() };
-      const json = JSON.stringify(eventWithTimestamp);
+    this.ctx.storage.sql.exec(
+      "INSERT INTO event_history (data, created_at) VALUES (?, ?)",
+      json,
+      Date.now(),
+    );
+    this.ctx.storage.sql.exec(
+      `DELETE FROM event_history WHERE id NOT IN (
+        SELECT id FROM event_history ORDER BY id DESC LIMIT ?
+      )`,
+      MAX_EVENT_HISTORY,
+    );
 
-      this.ctx.storage.sql.exec(
-        "INSERT INTO event_history (data, created_at) VALUES (?, ?)",
-        json,
+    this.broadcast(json);
+  }
+
+  async getIdentity(): Promise<{ public: string | null; private: string | null }> {
+    const pub = this.ctx.storage.sql
+      .exec("SELECT value FROM identity WHERE key = 'identity_public'")
+      .toArray();
+    const priv = this.ctx.storage.sql
+      .exec("SELECT value FROM identity WHERE key = 'identity_private'")
+      .toArray();
+    return {
+      public: pub.length > 0 ? (pub[0] as any).value : null,
+      private: priv.length > 0 ? (priv[0] as any).value : null,
+    };
+  }
+
+  async setIdentity(publicKey: string, privateKey: string): Promise<void> {
+    this.ctx.storage.sql.exec(
+      "INSERT OR REPLACE INTO identity (key, value) VALUES ('identity_public', ?), ('identity_private', ?)",
+      publicKey,
+      privateKey,
+    );
+  }
+
+  async savePlan(planId: string, data: string): Promise<void> {
+    const expiresAt = Date.now() + 3600 * 1000;
+    this.ctx.storage.sql.exec(
+      "INSERT OR REPLACE INTO consensus_plans (id, data, expires_at) VALUES (?, ?, ?)",
+      planId,
+      data,
+      expiresAt,
+    );
+  }
+
+  async getPlan(planId: string): Promise<string | null> {
+    const rows = this.ctx.storage.sql
+      .exec(
+        "SELECT data FROM consensus_plans WHERE id = ? AND expires_at > ?",
+        planId,
         Date.now(),
-      );
-      this.ctx.storage.sql.exec(
-        `DELETE FROM event_history WHERE id NOT IN (
-          SELECT id FROM event_history ORDER BY id DESC LIMIT ?
-        )`,
-        MAX_EVENT_HISTORY,
-      );
+      )
+      .toArray();
+    return rows.length > 0 ? (rows[0] as any).data : null;
+  }
 
-      this.broadcast(json);
-      return new Response("OK");
-    }
+  async query(sql: string, params: any[] = []): Promise<any[]> {
+    return this.ctx.storage.sql.exec(sql, ...params).toArray();
+  }
 
-    if (url.pathname === "/storage" && request.method === "POST") {
-      return this.handleStorage(request);
-    }
+  async exec(sql: string, params: any[] = []): Promise<void> {
+    this.ctx.storage.sql.exec(sql, ...params);
+  }
 
+  async fetch(request: Request) {
     if (request.headers.get("Upgrade") === "websocket") {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
@@ -95,74 +137,6 @@ export default class TrafficControl extends DurableObject {
       .exec("SELECT data FROM event_history ORDER BY id ASC")
       .toArray();
     return rows.map((r: any) => JSON.parse(r.data));
-  }
-
-  private async handleStorage(request: Request): Promise<Response> {
-    const body: any = await request.json();
-    const { action } = body;
-
-    switch (action) {
-      case "getIdentity": {
-        const pub = this.ctx.storage.sql
-          .exec("SELECT value FROM identity WHERE key = 'identity_public'")
-          .toArray();
-        const priv = this.ctx.storage.sql
-          .exec("SELECT value FROM identity WHERE key = 'identity_private'")
-          .toArray();
-        return Response.json({
-          public: pub.length > 0 ? (pub[0] as any).value : null,
-          private: priv.length > 0 ? (priv[0] as any).value : null,
-        });
-      }
-
-      case "setIdentity": {
-        this.ctx.storage.sql.exec(
-          "INSERT OR REPLACE INTO identity (key, value) VALUES ('identity_public', ?), ('identity_private', ?)",
-          body.publicKey,
-          body.privateKey,
-        );
-        return Response.json({ success: true });
-      }
-
-      case "savePlan": {
-        const expiresAt = Date.now() + 3600 * 1000;
-        this.ctx.storage.sql.exec(
-          "INSERT OR REPLACE INTO consensus_plans (id, data, expires_at) VALUES (?, ?, ?)",
-          body.planId,
-          body.data,
-          expiresAt,
-        );
-        return Response.json({ success: true });
-      }
-
-      case "getPlan": {
-        const rows = this.ctx.storage.sql
-          .exec(
-            "SELECT data FROM consensus_plans WHERE id = ? AND expires_at > ?",
-            body.planId,
-            Date.now(),
-          )
-          .toArray();
-        return Response.json({
-          data: rows.length > 0 ? (rows[0] as any).data : null,
-        });
-      }
-
-      case "query": {
-        const results = this.ctx.storage.sql
-          .exec(body.sql, ...(body.params || []))
-          .toArray();
-        return Response.json({ results });
-      }
-
-      case "exec": {
-        this.ctx.storage.sql.exec(body.sql, ...(body.params || []));
-        return Response.json({ success: true });
-      }
-
-      default:
-        return Response.json({ error: "Unknown action" }, { status: 400 });
-    }
   }
 
   /** Hibernatable WebSocket: called when a connected client sends a message. */
