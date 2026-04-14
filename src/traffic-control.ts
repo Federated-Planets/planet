@@ -1,9 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 
-export default class TrafficControl extends DurableObject {
-  private sessions: Set<WebSocket> = new Set();
-  private events: any[] = [];
+const MAX_EVENT_HISTORY = 50;
 
+export default class TrafficControl extends DurableObject {
   constructor(state: any, env: any) {
     super(state, env);
     this.ctx.storage.sql.exec(`
@@ -36,6 +35,12 @@ export default class TrafficControl extends DurableObject {
         data TEXT NOT NULL,
         expires_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS event_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        data TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
     `);
     console.log("[TrafficControl] Initialized with SQLite storage");
   }
@@ -45,9 +50,22 @@ export default class TrafficControl extends DurableObject {
 
     if (url.pathname === "/events" && request.method === "POST") {
       const event = await request.json();
-      this.events.push({ ...event, timestamp: Date.now() });
-      if (this.events.length > 50) this.events.shift();
-      this.broadcast(JSON.stringify(event));
+      const eventWithTimestamp = { ...event, timestamp: Date.now() };
+      const json = JSON.stringify(eventWithTimestamp);
+
+      this.ctx.storage.sql.exec(
+        "INSERT INTO event_history (data, created_at) VALUES (?, ?)",
+        json,
+        Date.now(),
+      );
+      this.ctx.storage.sql.exec(
+        `DELETE FROM event_history WHERE id NOT IN (
+          SELECT id FROM event_history ORDER BY id DESC LIMIT ?
+        )`,
+        MAX_EVENT_HISTORY,
+      );
+
+      this.broadcast(json);
       return new Response("OK");
     }
 
@@ -58,21 +76,25 @@ export default class TrafficControl extends DurableObject {
     if (request.headers.get("Upgrade") === "websocket") {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
-      // @ts-ignore
-      server.accept();
-      this.sessions.add(server);
+      // @ts-ignore – Hibernatable WebSocket API
+      this.ctx.acceptWebSocket(server);
 
-      server.send(JSON.stringify({ type: "history", data: this.events }));
-
-      server.addEventListener("close", () => this.sessions.delete(server));
-      server.addEventListener("error", () => this.sessions.delete(server));
+      const events = this.getEventHistory();
+      server.send(JSON.stringify({ type: "history", data: events }));
 
       return new Response(null, { status: 101, webSocket: client });
     }
 
-    return new Response(JSON.stringify(this.events), {
+    return new Response(JSON.stringify(this.getEventHistory()), {
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  private getEventHistory(): any[] {
+    const rows = this.ctx.storage.sql
+      .exec("SELECT data FROM event_history ORDER BY id ASC")
+      .toArray();
+    return rows.map((r: any) => JSON.parse(r.data));
   }
 
   private async handleStorage(request: Request): Promise<Response> {
@@ -143,12 +165,32 @@ export default class TrafficControl extends DurableObject {
     }
   }
 
+  /** Hibernatable WebSocket: called when a connected client sends a message. */
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+    // No client-to-server messages expected; ignore.
+  }
+
+  /** Hibernatable WebSocket: called when a client disconnects. */
+  async webSocketClose(
+    ws: WebSocket,
+    code: number,
+    reason: string,
+    wasClean: boolean,
+  ) {
+    ws.close(code, "Durable Object is closing WebSocket");
+  }
+
+  /** Hibernatable WebSocket: called on WebSocket error. */
+  async webSocketError(ws: WebSocket, error: unknown) {
+    ws.close(1011, "WebSocket error");
+  }
+
   broadcast(message: string) {
-    for (const ws of this.sessions) {
+    for (const ws of this.ctx.getWebSockets()) {
       try {
         ws.send(message);
       } catch (e) {
-        this.sessions.delete(ws);
+        // Framework cleans up dead sockets automatically
       }
     }
   }
