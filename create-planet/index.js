@@ -310,15 +310,22 @@ const runUpdate = async (outDir, dirLabel) => {
 const main = async () => {
   p.intro("Welcome to Federated Planets — create or update a planet");
 
-  const dirAnswer = await p.text({
-    message: "Planet directory",
-    placeholder: "my-planet",
-    defaultValue: "my-planet",
-    validate: (v) => (v.trim() ? undefined : "Directory name is required"),
-  });
-  if (p.isCancel(dirAnswer)) onCancel();
+  const cliDir = process.argv.slice(2).find((a) => !a.startsWith("-"));
+  let dirLabel;
+  if (cliDir) {
+    dirLabel = cliDir;
+    p.note(`Using directory from CLI: ${dirLabel}`);
+  } else {
+    const dirAnswer = await p.text({
+      message: "Planet directory",
+      placeholder: "my-planet",
+      defaultValue: "my-planet",
+      validate: (v) => (v.trim() ? undefined : "Directory name is required"),
+    });
+    if (p.isCancel(dirAnswer)) onCancel();
+    dirLabel = dirAnswer;
+  }
 
-  const dirLabel = dirAnswer;
   const outDir = path.resolve(dirLabel);
 
   if (existsSync(outDir) && readdirSync(outDir).length > 0) {
